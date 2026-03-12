@@ -4,7 +4,7 @@ import { Wrench, Wifi, Brain, Gauge, Monitor as MonitorIcon, Volume2, PlayCircle
 
 const TESTS = [
   { id: 'mqtt',       name: 'MQTT Broker',     desc: 'Vérifier la connexion au broker MQTT',        icon: Wifi },
-  { id: 'openclaw',   name: 'OpenClaw IA',     desc: 'Ping le WebSocket Gateway d\'OpenClaw',       icon: Brain },
+  { id: 'openclaw',   name: 'OpenClaw IA',     desc: 'Vérifie si OpenClaw écoute sur le flux SSE',  icon: Brain },
   { id: 'servo_pan',  name: 'Servo PAN',       desc: 'Sweep gauche → droite → centre',              icon: Gauge },
   { id: 'servo_tilt', name: 'Servo TILT',      desc: 'Sweep haut → bas → centre',                   icon: Gauge },
   { id: 'lcd',        name: 'Affichage LCD',   desc: 'Envoyer un pattern de test au LCD',           icon: MonitorIcon },
@@ -108,7 +108,7 @@ export default function Diagnostics() {
           <div className="info-table">
             <div className="info-row"><span className="info-key">VPS IP</span><span className="info-val">72.61.111.8</span></div>
             <div className="info-row"><span className="info-key">MQTT Port</span><span className="info-val">1883</span></div>
-            <div className="info-row"><span className="info-key">OpenClaw WS</span><span className="info-val">:18789</span></div>
+            <div className="info-row"><span className="info-key">OpenClaw SSE</span><span className="info-val">/api/neo/stream</span></div>
             <div className="info-row"><span className="info-key">Servo Pan</span><span className="info-val">{servo.pan}°</span></div>
             <div className="info-row"><span className="info-key">Servo Tilt</span><span className="info-val">{servo.tilt}°</span></div>
             <div className="info-row"><span className="info-key">MQTT Status</span><span className="info-val" style={{ color: connState.mqtt ? 'var(--green-500)' : 'var(--red-500)' }}>{connState.mqtt ? 'Connecté' : 'Déconnecté'}</span></div>

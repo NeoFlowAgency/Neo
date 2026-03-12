@@ -21,11 +21,11 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "neo-secret-change-me-in
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 # ── State ──────────────────────────────────────────────────────
-mqtt_connected   = False
-openclaw_ok      = False
-esp32_last_seen  = 0
-servo_state      = {"pan": 90, "tilt": 90}
-logs             = deque(maxlen=400)
+mqtt_connected  = False
+esp32_last_seen = 0
+servo_state     = {"pan": 90, "tilt": 90}
+logs            = deque(maxlen=400)
+chat_history    = deque(maxlen=20)   # historique pour contexte OpenClaw
 
 # ── Logging ───────────────────────────────────────────────────
 def log(level, msg):
@@ -103,8 +103,10 @@ def _check_openclaw_api_key():
 
 # ── Helpers ───────────────────────────────────────────────────
 def get_conn_state():
-    esp32_alive     = (time.time() - esp32_last_seen)     < 30 if esp32_last_seen     else False
-    openclaw_alive  = (time.time() - _openclaw_last_poll) < 60 if _openclaw_last_poll else False
+    esp32_alive    = (time.time() - esp32_last_seen)     < 30 if esp32_last_seen     else False
+    sse_alive      = len(_sse_queues) > 0
+    poll_alive     = (time.time() - _openclaw_last_poll) < 60 if _openclaw_last_poll else False
+    openclaw_alive = sse_alive or poll_alive
     return {
         "mqtt":     mqtt_connected,
         "openclaw": openclaw_alive,
@@ -210,7 +212,7 @@ def api_neo_pending():
 @app.route("/api/neo/message", methods=["POST"])
 def api_neo_message():
     """OpenClaw envoie une réponse à afficher dans le chat."""
-    global openclaw_ok, _openclaw_last_poll
+    global _openclaw_last_poll
     if not _check_openclaw_api_key():
         return jsonify({"error": "Unauthorized"}), 401
     data = request.get_json(silent=True) or {}
@@ -218,11 +220,11 @@ def api_neo_message():
     if not text:
         return jsonify({"error": "Champ 'text' manquant"}), 400
     log("CHAT", f"OpenClaw → {text[:100]}")
+    chat_history.append({"role": "neo", "text": text, "t": time.time()})
     socketio.emit("chat_reply", {"text": text})
     # Affichage sur LCD + synthèse vocale
     send_command("lcd",  texte=f"Neo: {text[:28]}")
     send_command("dire", texte=text[:200])
-    openclaw_ok = True
     _openclaw_last_poll = time.time()
     socketio.emit("conn_state", get_conn_state())
     return jsonify({"ok": True})
@@ -274,7 +276,12 @@ def on_chat(data):
     if not message:
         return
     log("CHAT", f"Tu → {message}")
-    msg = {"text": message, "timestamp": time.time()}
+    chat_history.append({"role": "user", "text": message, "t": time.time()})
+    msg = {
+        "text":    message,
+        "timestamp": time.time(),
+        "history": list(chat_history)[-10:],   # 10 derniers tours pour contexte
+    }
     # Push immédiat vers les clients SSE (OpenClaw)
     with _sse_lock:
         for q in _sse_queues:

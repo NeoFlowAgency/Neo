@@ -579,6 +579,11 @@ html, body, #root {
   padding: 4px 0;
 }
 
+.msg-neo.msg-error {
+  border-color: var(--red-500);
+  color: var(--red-400);
+}
+
 .msg .msg-sender {
   font-size: 0.6rem;
   font-weight: 600;

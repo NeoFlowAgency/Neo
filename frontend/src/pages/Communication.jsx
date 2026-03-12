@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNeo } from '../context/NeoContext'
-import { MessageCircle, Send } from 'lucide-react'
+import { MessageCircle, Send, Trash2 } from 'lucide-react'
 
 const QUICK_PHRASES = [
   'Bonjour Neo !',
@@ -12,7 +12,7 @@ const QUICK_PHRASES = [
 ]
 
 export default function Communication() {
-  const { chatMessages, chatThinking, sendChat, connState } = useNeo()
+  const { chatMessages, chatThinking, sendChat, connState, clearChat } = useNeo()
   const [input, setInput] = useState('')
   const messagesEnd = useRef(null)
 
@@ -61,7 +61,7 @@ export default function Communication() {
           )}
 
           {chatMessages.map((msg, i) => (
-            <div key={i} className={`msg msg-${msg.type}`}>
+            <div key={i} className={`msg msg-${msg.type}${msg.error ? ' msg-error' : ''}`}>
               <div className="msg-sender">{msg.type === 'user' ? 'Toi' : 'Neo'}</div>
               <div>{msg.text}</div>
               <div className="msg-time">{formatTime(msg.time)}</div>
@@ -99,17 +99,27 @@ export default function Communication() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKey}
-            placeholder="Écris quelque chose à Neo…"
+            placeholder={connState.openclaw ? 'Écris quelque chose à Neo…' : 'OpenClaw non connecté…'}
             disabled={chatThinking}
           />
           <button
             className="btn btn-primary"
             onClick={handleSend}
             disabled={chatThinking || !input.trim()}
+            title="Envoyer (Entrée)"
           >
             <Send size={16} />
             Envoyer
           </button>
+          {chatMessages.length > 0 && (
+            <button
+              className="btn btn-sm btn-danger"
+              onClick={clearChat}
+              title="Effacer la conversation"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       </div>
     </>

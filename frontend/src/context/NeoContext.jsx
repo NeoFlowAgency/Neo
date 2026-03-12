@@ -10,6 +10,7 @@ export function NeoProvider({ children }) {
   const [logs, setLogs] = useState([])
   const [chatMessages, setChatMessages] = useState([])
   const [chatThinking, setChatThinking] = useState(false)
+  const chatTimeoutRef = useRef(null)
   const [testResults, setTestResults] = useState({})
   const logsRef = useRef([])
 
@@ -32,9 +33,19 @@ export function NeoProvider({ children }) {
       setLogs([...entries])
     })
 
-    socket.on('chat_thinking', () => setChatThinking(true))
+    socket.on('chat_thinking', () => {
+      setChatThinking(true)
+      clearTimeout(chatTimeoutRef.current)
+      chatTimeoutRef.current = setTimeout(() => {
+        setChatThinking(false)
+        setChatMessages(prev => [...prev, {
+          type: 'neo', text: '⏱ Pas de réponse d\'OpenClaw (timeout 45s)', time: new Date(), error: true
+        }])
+      }, 45000)
+    })
 
     socket.on('chat_reply', data => {
+      clearTimeout(chatTimeoutRef.current)
       setChatThinking(false)
       setChatMessages(prev => [...prev, { type: 'neo', text: data.text, time: new Date() }])
     })
@@ -53,6 +64,7 @@ export function NeoProvider({ children }) {
     })
 
     return () => {
+      clearTimeout(chatTimeoutRef.current)
       socket.off('connect')
       socket.off('disconnect')
       socket.off('conn_state')
@@ -91,9 +103,15 @@ export function NeoProvider({ children }) {
     socket.emit('clear_logs')
   }, [])
 
+  const clearChat = useCallback(() => {
+    clearTimeout(chatTimeoutRef.current)
+    setChatMessages([])
+    setChatThinking(false)
+  }, [])
+
   const value = {
     connected, connState, servo, logs, chatMessages, chatThinking,
-    testResults, sendCommand, setServoAngle, sendChat, runTest, clearLogs,
+    testResults, sendCommand, setServoAngle, sendChat, runTest, clearLogs, clearChat,
   }
 
   return <NeoContext.Provider value={value}>{children}</NeoContext.Provider>

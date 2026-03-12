@@ -11,8 +11,8 @@ export default function BodyControl() {
   const [localPan, setLocalPan] = useState(servo.pan)
   const [localTilt, setLocalTilt] = useState(servo.tilt)
   const [dragging, setDragging] = useState(false)
-  const holdRef = useRef(null)
-  const pressedRef = useRef(null)
+  const holdRef    = useRef(null)
+  const [pressedKey, setPressedKey] = useState(null)
 
   // Sync with server state when not dragging
   useEffect(() => {
@@ -25,14 +25,14 @@ export default function BodyControl() {
   const holdCmd = useCallback((action) => {
     if (holdRef.current) return
     sendCommand(action)
+    setPressedKey(action)
     holdRef.current = setInterval(() => sendCommand(action), Math.max(80, 400 - speed * 60))
-    pressedRef.current = action
   }, [sendCommand, speed])
 
   const stopHold = useCallback(() => {
     clearInterval(holdRef.current)
     holdRef.current = null
-    pressedRef.current = null
+    setPressedKey(null)
   }, [])
 
   // Keyboard shortcuts
@@ -132,21 +132,21 @@ export default function BodyControl() {
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
             <div className="dpad-grid">
               <div className="dpad-btn empty" />
-              <button className={`dpad-btn ${pressedRef.current === 'tete_haut' ? 'pressed' : ''}`}
+              <button className={`dpad-btn ${pressedKey === 'tete_haut' ? 'pressed' : ''}`}
                       onMouseDown={() => holdCmd('tete_haut')}  onMouseUp={stopHold} onMouseLeave={stopHold}
                       onTouchStart={() => holdCmd('tete_haut')} onTouchEnd={stopHold}>▲</button>
               <div className="dpad-btn empty" />
 
-              <button className={`dpad-btn ${pressedRef.current === 'tete_gauche' ? 'pressed' : ''}`}
+              <button className={`dpad-btn ${pressedKey === 'tete_gauche' ? 'pressed' : ''}`}
                       onMouseDown={() => holdCmd('tete_gauche')}  onMouseUp={stopHold} onMouseLeave={stopHold}
                       onTouchStart={() => holdCmd('tete_gauche')} onTouchEnd={stopHold}>◀</button>
               <button className="dpad-btn center-btn" onClick={() => sendCommand('tete_centre')}>CTR</button>
-              <button className={`dpad-btn ${pressedRef.current === 'tete_droite' ? 'pressed' : ''}`}
+              <button className={`dpad-btn ${pressedKey === 'tete_droite' ? 'pressed' : ''}`}
                       onMouseDown={() => holdCmd('tete_droite')}  onMouseUp={stopHold} onMouseLeave={stopHold}
                       onTouchStart={() => holdCmd('tete_droite')} onTouchEnd={stopHold}>▶</button>
 
               <div className="dpad-btn empty" />
-              <button className={`dpad-btn ${pressedRef.current === 'tete_bas' ? 'pressed' : ''}`}
+              <button className={`dpad-btn ${pressedKey === 'tete_bas' ? 'pressed' : ''}`}
                       onMouseDown={() => holdCmd('tete_bas')}  onMouseUp={stopHold} onMouseLeave={stopHold}
                       onTouchStart={() => holdCmd('tete_bas')} onTouchEnd={stopHold}>▼</button>
               <div className="dpad-btn empty" />
