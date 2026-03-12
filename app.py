@@ -4,7 +4,7 @@ import threading
 import time
 import eventlet
 from collections import deque
-from flask import Flask, render_template, send_from_directory, jsonify, request, session
+from flask import Flask, render_template, send_from_directory, jsonify, request, session, Response, stream_with_context
 from flask_socketio import SocketIO, emit
 import paho.mqtt.client as mqtt
 
@@ -88,10 +88,12 @@ def send_command(action, **kwargs):
     log("CMD", f"→ {action} {kwargs if kwargs else ''}")
     return True
 
-# ── OpenClaw — file d'attente (OpenClaw polls /api/neo/pending) ──
-_pending      = deque(maxlen=50)   # messages user → OpenClaw en attente
+# ── OpenClaw — SSE push (zéro polling côté OpenClaw) ─────────────
+_sse_queues   = []                 # une queue eventlet par client SSE connecté
+_sse_lock     = threading.Lock()
+_pending      = deque(maxlen=50)   # fallback si OpenClaw utilise /api/neo/pending
 _pending_lock = threading.Lock()
-_openclaw_last_poll = 0            # timestamp du dernier poll OpenClaw
+_openclaw_last_poll = 0
 
 def _check_openclaw_api_key():
     """Vérifie la clé API si elle est configurée. Retourne True si OK."""
@@ -144,23 +146,65 @@ def api_status():
 
 # ── OpenClaw REST API ──────────────────────────────────────────
 
+@app.route("/api/neo/stream")
+def api_neo_stream():
+    """SSE — connexion persistante. Neo pousse les messages dès qu'ils arrivent.
+    OpenClaw : curl -N http://72.61.111.8:8080/api/neo/stream
+    Zéro requête quand personne n'écrit. Message instantané quand l'utilisateur écrit."""
+    global _openclaw_last_poll
+    if not _check_openclaw_api_key():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    queue = eventlet.Queue()
+    with _sse_lock:
+        _sse_queues.append(queue)
+
+    def generate():
+        global _openclaw_last_poll
+        _openclaw_last_poll = time.time()
+        socketio.emit("conn_state", get_conn_state())
+        log("INFO", "OpenClaw SSE connecté")
+        try:
+            yield "data: {\"type\":\"connected\"}\n\n"
+            while True:
+                try:
+                    msg = queue.get(timeout=30)
+                    if msg is None:
+                        break
+                    _openclaw_last_poll = time.time()
+                    socketio.emit("conn_state", get_conn_state())
+                    yield f"data: {json.dumps(msg)}\n\n"
+                except eventlet.queue.Empty:
+                    yield ": keepalive\n\n"   # maintient la connexion ouverte
+        finally:
+            with _sse_lock:
+                try:
+                    _sse_queues.remove(queue)
+                except ValueError:
+                    pass
+            log("INFO", "OpenClaw SSE déconnecté")
+
+    return Response(
+        stream_with_context(generate()),
+        content_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
 @app.route("/api/neo/pending", methods=["GET"])
 def api_neo_pending():
-    """Long polling — bloque jusqu'à ce qu'un message arrive (max 25s).
-    OpenClaw re-appelle immédiatement → ~2 req/min au lieu de 20."""
+    """Fallback polling pour OpenClaw si SSE non supporté."""
     global _openclaw_last_poll
     if not _check_openclaw_api_key():
         return jsonify({"error": "Unauthorized"}), 401
     _openclaw_last_poll = time.time()
     socketio.emit("conn_state", get_conn_state())
-    # Attendre un message pendant au plus 25 secondes
     deadline = time.time() + 25
     while time.time() < deadline:
         with _pending_lock:
             if _pending:
                 msg = _pending.popleft()
                 return jsonify({"messages": [msg]})
-        eventlet.sleep(0.5)   # yield sans bloquer les autres requêtes
+        eventlet.sleep(0.5)
     return jsonify({"messages": []})
 
 @app.route("/api/neo/message", methods=["POST"])
@@ -230,9 +274,14 @@ def on_chat(data):
     if not message:
         return
     log("CHAT", f"Tu → {message}")
-    # Mettre le message en file d'attente pour OpenClaw
+    msg = {"text": message, "timestamp": time.time()}
+    # Push immédiat vers les clients SSE (OpenClaw)
+    with _sse_lock:
+        for q in _sse_queues:
+            q.put(msg)
+    # Fallback polling
     with _pending_lock:
-        _pending.append({"text": message, "timestamp": time.time()})
+        _pending.append(msg)
     emit("chat_thinking", {})
 
 @socketio.on("test_component")
