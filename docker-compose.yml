@@ -1,16 +1,23 @@
 version: "3.9"
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 #  Neo Robot Control Center — Docker Compose
-#  Usage :
-#    docker compose up --build -d
-#    docker compose logs -f
-#    docker compose down
-# ══════════════════════════════════════════════════════════════
+#
+#  AVANT DE LANCER :
+#  1. Remplissez les valeurs marquées ← À MODIFIER ci-dessous
+#  2. Générez une SECRET_KEY solide :
+#       python3 -c "import secrets; print(secrets.token_hex(32))"
+#
+#  Commandes utiles :
+#    Construire et lancer  : docker compose up --build -d
+#    Voir les logs         : docker compose logs -f
+#    Arrêter               : docker compose down
+#    Redémarrer le backend : docker compose restart backend
+# ══════════════════════════════════════════════════════════════════════
 
 services:
 
-  # ── Backend Flask / Socket.IO ─────────────────────────────
+  # ── Backend — Flask / Socket.IO / MQTT ──────────────────────────
   backend:
     build:
       context: .
@@ -18,26 +25,48 @@ services:
     container_name: neo_backend
     restart: unless-stopped
     ports:
-      - "5000:5000"          # exposé pour debug ; retirez en prod pure
+      - "8000:8000"    # Accès direct backend (debug). Retirez en prod pure.
     environment:
-      # ▼▼▼  Adaptez ces valeurs à votre environnement  ▼▼▼
-      NEO_MQTT_HOST: "72.61.111.8"       # IP ou hostname du broker MQTT
-      NEO_MQTT_PORT: "1883"
-      NEO_OPENCLAW_WS: "ws://72.61.111.8:18789"
-      # Variables Flask
-      FLASK_ENV: "production"
-      SECRET_KEY: "changez-moi-en-prod"   # ← OBLIGATOIRE : changez cette valeur
-      # ▲▲▲ ──────────────────────────────────────────── ▲▲▲
+      # ┌─────────────────────────────────────────────────────────────┐
+      # │  VARIABLES OBLIGATOIRES — modifiez avant de déployer        │
+      # └─────────────────────────────────────────────────────────────┘
+
+      # Clé secrète Flask — DOIT être une chaîne aléatoire longue
+      # Générer avec : python3 -c "import secrets; print(secrets.token_hex(32))"
+      SECRET_KEY: "REMPLACEZ_PAR_UNE_CLE_ALEATOIRE_LONGUE"   # ← À MODIFIER
+
+      # Port d'écoute du backend (doit correspondre à EXPOSE dans Dockerfile)
+      PORT: "8000"
+
+      # ┌─────────────────────────────────────────────────────────────┐
+      # │  MQTT — Broker de communication avec l'ESP32                │
+      # └─────────────────────────────────────────────────────────────┘
+      # Adresse IP ou hostname de votre broker MQTT
+      # Si vous utilisez le broker MQTT local (bloc commenté ci-dessous),
+      # remplacez par : "mqtt"
+      NEO_MQTT_HOST: "VOTRE_IP_BROKER_MQTT"   # ← À MODIFIER (ex: 192.168.1.10)
+      NEO_MQTT_PORT: "1883"                    # Port MQTT standard (1883 ou 8883 pour TLS)
+
+      # ┌─────────────────────────────────────────────────────────────┐
+      # │  OpenClaw — Serveur IA WebSocket                            │
+      # └─────────────────────────────────────────────────────────────┘
+      # URL publique de votre instance OpenClaw.
+      # Exemples :
+      #   - Serveur distant : "ws://123.45.67.89:18789"
+      #   - Sur le même VPS : "ws://localhost:18789"
+      NEO_OPENCLAW_WS: "ws://VOTRE_IP_OU_DOMAINE:18789"   # ← À MODIFIER
+
     networks:
       - neo_net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/state')"]
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/status')"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 20s
 
-  # ── Frontend Nginx + React ────────────────────────────────
+  # ── Frontend — Nginx + React ─────────────────────────────────────
   frontend:
     build:
       context: .
@@ -45,16 +74,16 @@ services:
     container_name: neo_frontend
     restart: unless-stopped
     ports:
-      - "80:80"              # accès via http://votre-vps-ip
+      - "80:80"    # Application accessible sur http://IP_VPS
     depends_on:
       backend:
         condition: service_healthy
     networks:
       - neo_net
 
-  # ── Broker MQTT local (optionnel) ─────────────────────────
-  # Décommentez ce bloc si vous n'avez pas de broker MQTT externe
-  # et mettez NEO_MQTT_HOST: "mqtt" ci-dessus.
+  # ── Broker MQTT local Mosquitto (OPTIONNEL) ──────────────────────
+  # Décommentez ce bloc si vous n'avez PAS de broker MQTT externe.
+  # Remplacez alors NEO_MQTT_HOST par "mqtt" dans le service backend.
   #
   # mqtt:
   #   image: eclipse-mosquitto:2.0
@@ -62,7 +91,7 @@ services:
   #   restart: unless-stopped
   #   ports:
   #     - "1883:1883"
-  #     - "9001:9001"        # WebSocket MQTT
+  #     - "9001:9001"   # WebSocket MQTT (optionnel)
   #   volumes:
   #     - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
   #     - mosquitto_data:/mosquitto/data
@@ -70,12 +99,12 @@ services:
   #   networks:
   #     - neo_net
 
-# ── Réseaux ──────────────────────────────────────────────────
+# ── Réseaux internes Docker ──────────────────────────────────────
 networks:
   neo_net:
     driver: bridge
 
-# ── Volumes (si broker MQTT local activé) ────────────────────
+# ── Volumes persistants (décommenter si MQTT local activé) ──────
 # volumes:
 #   mosquitto_data:
 #   mosquitto_log:

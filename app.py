@@ -16,7 +16,7 @@ TOPIC_CMD    = "neo/commandes"
 TOPIC_STATUS = "neo/status"
 
 app = Flask(__name__, static_folder="static", static_url_path="")
-app.config["SECRET_KEY"] = "neo-secret"
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "neo-secret-change-me-in-prod")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 # ── State ──────────────────────────────────────────────────────
@@ -342,6 +342,7 @@ def on_clear_logs():
 # ── Main ──────────────────────────────────────────────────────
 if __name__ == "__main__":
     threading.Thread(target=mqtt_loop, daemon=True).start()
-    log("INFO", f"Neo Control Center démarré sur http://0.0.0.0:5000")
+    port = int(os.environ.get("PORT", 8000))
+    log("INFO", f"Neo Control Center démarré sur http://0.0.0.0:{port}")
     log("INFO", f"MQTT → {MQTT_HOST}:{MQTT_PORT} | OpenClaw → {OPENCLAW_WS}")
-    socketio.run(app, host="0.0.0.0", port=5000, debug=False)
+    socketio.run(app, host="0.0.0.0", port=port, debug=False)

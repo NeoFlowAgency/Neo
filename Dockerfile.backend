@@ -1,39 +1,45 @@
-# ─────────────────────────────────────────────
-# Neo — Backend Python (Flask + Socket.IO)
-# ─────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+#  Neo — Backend Python (Flask + Socket.IO + MQTT)
+#  Image : python:3.11-slim-bullseye (légère et récente)
+#  Port  : 8000
+# ═══════════════════════════════════════════════════════════════
+
 FROM python:3.11-slim-bullseye
 
-# Security: run as non-root user
+# ── Sécurité : utilisateur non-root ──────────────────────────
 RUN groupadd --gid 1001 neo && \
     useradd --uid 1001 --gid neo --shell /bin/bash --create-home neo
 
 WORKDIR /app
 
-# System dependencies (audio bridge needs libsndfile; add only what's needed)
+# ── Dépendances système minimales ────────────────────────────
+# libsndfile1 + ffmpeg : requis si neo_bridge.py (audio STT/TTS) est lancé
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies first (layer cache optimization)
+# ── Dépendances Python ────────────────────────────────────────
+# Copie d'abord requirements.txt seul → meilleur cache Docker
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# ── Code source du backend ───────────────────────────────────
 COPY app.py .
 COPY neo_bridge.py .
 
-# (Optional) copy templates if Flask fallback is used
+# Fallback HTML si le build React n'est pas servi par Nginx
 COPY templates/ ./templates/
 
-# Change ownership to non-root user
+# ── Propriété des fichiers → utilisateur non-root ────────────
 RUN chown -R neo:neo /app
 
 USER neo
 
-EXPOSE 5000
+EXPOSE 8000
 
-# Production: use eventlet-aware gunicorn for better concurrency
-# Switch to "python app.py" for development / simpler deployments
+# Lance Flask via Socket.IO (eventlet).
+# Pour plus de performances en production, remplacer par :
+#   CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "-b", "0.0.0.0:8000", "app:app"]
 CMD ["python", "app.py"]

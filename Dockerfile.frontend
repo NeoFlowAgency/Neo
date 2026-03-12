@@ -1,34 +1,39 @@
+# ═══════════════════════════════════════════════════════════════
+#  Neo — Frontend Docker (multi-stage)
+#  Stage 1 : Build React/Vite avec Node.js
+#  Stage 2 : Serve les fichiers statiques avec Nginx (léger)
+# ═══════════════════════════════════════════════════════════════
+
 # ─────────────────────────────────────────────
-# Stage 1 — Build React/Vite app
+# Stage 1 — Build
 # ─────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
-WORKDIR /app
-
-# Copy only package files first (better layer caching)
-COPY frontend/package*.json ./frontend/
-
 WORKDIR /app/frontend
+
+# Copie des fichiers de dépendances en premier (meilleur cache Docker)
+COPY frontend/package*.json ./
 RUN npm ci --silent
 
-# Copy full frontend source
+# Copie du code source frontend
 COPY frontend/ .
 
-# Build — vite.config.js outputs to ../static (i.e. /app/static)
+# Build de production → sortie dans /app/frontend/dist
 RUN npm run build
 
 # ─────────────────────────────────────────────
-# Stage 2 — Serve with Nginx (lightweight)
+# Stage 2 — Production (Nginx léger)
 # ─────────────────────────────────────────────
-FROM nginx:1.27-alpine AS production
+FROM nginx:alpine AS production
 
-# Remove default Nginx page
+# Suppression de la page Nginx par défaut
 RUN rm -rf /usr/share/nginx/html/*
 
-# Copy built assets from builder stage
-COPY --from=builder /app/static /usr/share/nginx/html
+# Copie des assets buildés depuis le stage builder
+COPY --from=builder /app/frontend/dist /usr/share/nginx/html
 
-# Copy custom Nginx config (SPA routing + WebSocket proxy)
+# Copie de la configuration Nginx personnalisée
+# (SPA routing + proxy Socket.IO WebSocket + proxy API)
 COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
