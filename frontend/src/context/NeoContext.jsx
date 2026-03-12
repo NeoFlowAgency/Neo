@@ -14,6 +14,8 @@ export function NeoProvider({ children }) {
   const logsRef = useRef([])
 
   useEffect(() => {
+    socket.connect()
+
     socket.on('connect', () => setConnected(true))
     socket.on('disconnect', () => setConnected(false))
 
@@ -61,6 +63,7 @@ export function NeoProvider({ children }) {
       socket.off('chat_reply')
       socket.off('test_result')
       socket.off('neo_status')
+      socket.disconnect()
     }
   }, [])
 

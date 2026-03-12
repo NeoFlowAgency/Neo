@@ -4,7 +4,7 @@ import threading
 import time
 import websocket
 from collections import deque
-from flask import Flask, render_template, send_from_directory, jsonify
+from flask import Flask, render_template, send_from_directory, jsonify, request, session
 from flask_socketio import SocketIO, emit
 import paho.mqtt.client as mqtt
 
@@ -12,6 +12,7 @@ import paho.mqtt.client as mqtt
 MQTT_HOST    = os.environ.get("NEO_MQTT_HOST", "72.61.111.8")
 MQTT_PORT    = int(os.environ.get("NEO_MQTT_PORT", "1883"))
 OPENCLAW_WS  = os.environ.get("NEO_OPENCLAW_WS", "ws://72.61.111.8:18789")
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "neo")
 TOPIC_CMD    = "neo/commandes"
 TOPIC_STATUS = "neo/status"
 
@@ -134,11 +135,27 @@ def get_conn_state():
 # ── Routes ────────────────────────────────────────────────────
 @app.route("/")
 def index():
-    # Serve React build if available, otherwise fallback to templates
     try:
         return send_from_directory("static", "index.html")
     except Exception:
         return render_template("index.html")
+
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    data = request.get_json(silent=True) or {}
+    if data.get("password") == APP_PASSWORD:
+        session["auth"] = True
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "Mot de passe incorrect"}), 401
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    session.pop("auth", None)
+    return jsonify({"ok": True})
+
+@app.route("/api/me")
+def api_me():
+    return jsonify({"authenticated": bool(session.get("auth"))})
 
 @app.route("/api/status")
 def api_status():
@@ -151,6 +168,8 @@ def api_status():
 # ── Socket events ─────────────────────────────────────────────
 @socketio.on("connect")
 def on_connect():
+    if not session.get("auth"):
+        return False  # reject unauthenticated connections
     emit("conn_state",  get_conn_state())
     emit("servo_state", servo_state)
     emit("logs_history", list(logs)[-60:])

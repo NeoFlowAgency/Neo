@@ -991,6 +991,74 @@ input[type=range].servo-slider::-webkit-slider-thumb:hover {
 }
 
 /* ═══════════════════════════════════════════
+   LOGIN
+═══════════════════════════════════════════ */
+.login-wrapper {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+}
+
+.login-card {
+  width: 340px;
+  padding: 40px 36px;
+}
+
+.login-logo {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.login-logo .logo-text {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  background: linear-gradient(135deg, var(--blue-400), var(--blue-600));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 4px;
+}
+
+.login-logo .logo-sub {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  letter-spacing: 0.18em;
+  font-weight: 500;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-input-wrap {
+  position: relative;
+}
+
+.login-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.login-error {
+  font-size: 0.75rem;
+  color: var(--red-500);
+  text-align: center;
+  padding: 6px 12px;
+  background: var(--red-bg);
+  border: 1px solid var(--red-border);
+  border-radius: var(--radius-sm);
+}
+
+/* ═══════════════════════════════════════════
    ANIMATIONS
 ═══════════════════════════════════════════ */
 @keyframes pulse {

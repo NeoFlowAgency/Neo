@@ -35,6 +35,9 @@ services:
       # Générer avec : python3 -c "import secrets; print(secrets.token_hex(32))"
       SECRET_KEY: "REMPLACEZ_PAR_UNE_CLE_ALEATOIRE_LONGUE"   # ← À MODIFIER
 
+      # Mot de passe pour accéder à l'interface web
+      APP_PASSWORD: "neo"   # ← CHANGEZ CE MOT DE PASSE !
+
       # Port d'écoute du backend (doit correspondre à EXPOSE dans Dockerfile)
       PORT: "8000"
 
@@ -44,8 +47,8 @@ services:
       # Adresse IP ou hostname de votre broker MQTT
       # Si vous utilisez le broker MQTT local (bloc commenté ci-dessous),
       # remplacez par : "mqtt"
-      NEO_MQTT_HOST: "VOTRE_IP_BROKER_MQTT"   # ← À MODIFIER (ex: 192.168.1.10)
-      NEO_MQTT_PORT: "1883"                    # Port MQTT standard (1883 ou 8883 pour TLS)
+      NEO_MQTT_HOST: "72.61.111.8"
+      NEO_MQTT_PORT: "1883"
 
       # ┌─────────────────────────────────────────────────────────────┐
       # │  OpenClaw — Serveur IA WebSocket                            │
@@ -54,7 +57,7 @@ services:
       # Exemples :
       #   - Serveur distant : "ws://123.45.67.89:18789"
       #   - Sur le même VPS : "ws://localhost:18789"
-      NEO_OPENCLAW_WS: "ws://VOTRE_IP_OU_DOMAINE:18789"   # ← À MODIFIER
+      NEO_OPENCLAW_WS: "ws://72.61.111.8:18789"
 
     networks:
       - neo_net
