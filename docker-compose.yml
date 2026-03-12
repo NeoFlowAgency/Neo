@@ -1,0 +1,81 @@
+version: "3.9"
+
+# ══════════════════════════════════════════════════════════════
+#  Neo Robot Control Center — Docker Compose
+#  Usage :
+#    docker compose up --build -d
+#    docker compose logs -f
+#    docker compose down
+# ══════════════════════════════════════════════════════════════
+
+services:
+
+  # ── Backend Flask / Socket.IO ─────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: neo_backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"          # exposé pour debug ; retirez en prod pure
+    environment:
+      # ▼▼▼  Adaptez ces valeurs à votre environnement  ▼▼▼
+      NEO_MQTT_HOST: "72.61.111.8"       # IP ou hostname du broker MQTT
+      NEO_MQTT_PORT: "1883"
+      NEO_OPENCLAW_WS: "ws://72.61.111.8:18789"
+      # Variables Flask
+      FLASK_ENV: "production"
+      SECRET_KEY: "changez-moi-en-prod"   # ← OBLIGATOIRE : changez cette valeur
+      # ▲▲▲ ──────────────────────────────────────────── ▲▲▲
+    networks:
+      - neo_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/state')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Frontend Nginx + React ────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: neo_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"              # accès via http://votre-vps-ip
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - neo_net
+
+  # ── Broker MQTT local (optionnel) ─────────────────────────
+  # Décommentez ce bloc si vous n'avez pas de broker MQTT externe
+  # et mettez NEO_MQTT_HOST: "mqtt" ci-dessus.
+  #
+  # mqtt:
+  #   image: eclipse-mosquitto:2.0
+  #   container_name: neo_mqtt
+  #   restart: unless-stopped
+  #   ports:
+  #     - "1883:1883"
+  #     - "9001:9001"        # WebSocket MQTT
+  #   volumes:
+  #     - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+  #     - mosquitto_data:/mosquitto/data
+  #     - mosquitto_log:/mosquitto/log
+  #   networks:
+  #     - neo_net
+
+# ── Réseaux ──────────────────────────────────────────────────
+networks:
+  neo_net:
+    driver: bridge
+
+# ── Volumes (si broker MQTT local activé) ────────────────────
+# volumes:
+#   mosquitto_data:
+#   mosquitto_log:

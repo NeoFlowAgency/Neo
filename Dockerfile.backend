@@ -1,0 +1,39 @@
+# ─────────────────────────────────────────────
+# Neo — Backend Python (Flask + Socket.IO)
+# ─────────────────────────────────────────────
+FROM python:3.11-slim-bullseye
+
+# Security: run as non-root user
+RUN groupadd --gid 1001 neo && \
+    useradd --uid 1001 --gid neo --shell /bin/bash --create-home neo
+
+WORKDIR /app
+
+# System dependencies (audio bridge needs libsndfile; add only what's needed)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsndfile1 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies first (layer cache optimization)
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY app.py .
+COPY neo_bridge.py .
+
+# (Optional) copy templates if Flask fallback is used
+COPY templates/ ./templates/
+
+# Change ownership to non-root user
+RUN chown -R neo:neo /app
+
+USER neo
+
+EXPOSE 5000
+
+# Production: use eventlet-aware gunicorn for better concurrency
+# Switch to "python app.py" for development / simpler deployments
+CMD ["python", "app.py"]
