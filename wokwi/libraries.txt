@@ -1,0 +1,8 @@
+# Wokwi Library List — Neo V1
+# https://docs.wokwi.com/guides/libraries
+
+PubSubClient
+ESP32Servo
+LiquidCrystal I2C
+Keypad
+ArduinoJson

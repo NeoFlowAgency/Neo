@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "author": "Neo Project",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-v1",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "pan_a",
+      "top": -120,
+      "left": -160,
+      "attrs": { "horn": "single", "color": "blue" },
+      "label": "Pan A"
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "pan_b",
+      "top": -120,
+      "left": -60,
+      "attrs": { "horn": "single", "color": "cyan" },
+      "label": "Pan B (miroir)"
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "tilt_a",
+      "top": -120,
+      "left": 40,
+      "attrs": { "horn": "single", "color": "red" },
+      "label": "Tilt A"
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "tilt_b",
+      "top": -120,
+      "left": 140,
+      "attrs": { "horn": "single", "color": "orange" },
+      "label": "Tilt B (miroir)"
+    },
+    {
+      "type": "wokwi-lcd1602",
+      "id": "lcd",
+      "top": 160,
+      "left": -200,
+      "attrs": { "pins": "i2c", "address": "0x27" }
+    },
+    {
+      "type": "wokwi-membrane-keypad",
+      "id": "kp",
+      "top": 160,
+      "left": 80,
+      "attrs": { "columns": "4" }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "buzzer",
+      "top": 80,
+      "left": 200,
+      "attrs": { "volume": "0.5" }
+    }
+  ],
+  "connections": [
+    ["esp:GND.1", "pan_a:GND",  "black",  []],
+    ["esp:5V",    "pan_a:V+",   "red",    []],
+    ["esp:18",    "pan_a:PWM",  "blue",   []],
+
+    ["esp:GND.2", "pan_b:GND",  "black",  []],
+    ["esp:5V",    "pan_b:V+",   "red",    []],
+    ["esp:19",    "pan_b:PWM",  "cyan",   []],
+
+    ["esp:GND.3", "tilt_a:GND", "black",  []],
+    ["esp:5V",    "tilt_a:V+",  "red",    []],
+    ["esp:23",    "tilt_a:PWM", "red",    []],
+
+    ["esp:GND.4", "tilt_b:GND", "black",  []],
+    ["esp:5V",    "tilt_b:V+",  "red",    []],
+    ["esp:4",     "tilt_b:PWM", "orange", []],
+
+    ["esp:GND.5", "lcd:GND",    "black",  []],
+    ["esp:5V",    "lcd:VCC",    "red",    []],
+    ["esp:21",    "lcd:SDA",    "green",  []],
+    ["esp:22",    "lcd:SCL",    "yellow", []],
+
+    ["esp:13",    "kp:R1",      "purple", []],
+    ["esp:14",    "kp:R2",      "purple", []],
+    ["esp:16",    "kp:R3",      "purple", []],
+    ["esp:17",    "kp:R4",      "purple", []],
+    ["esp:15",    "kp:C1",      "white",  []],
+    ["esp:12",    "kp:C2",      "white",  []],
+    ["esp:2",     "kp:C3",      "white",  []],
+    ["esp:5",     "kp:C4",      "white",  []],
+
+    ["esp:25",    "buzzer:1",   "brown",  []],
+    ["esp:GND.6", "buzzer:2",   "black",  []]
+  ]
+}

@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Neo Control Center</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --surface2: #1a1a26;
+      --border: #2a2a3d;
+      --accent: #e02020;
+      --accent2: #ff4444;
+      --text: #e8e8f0;
+      --text2: #888899;
+      --online: #22cc66;
+      --offline: #cc2222;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    header h1 {
+      font-size: 1.4rem;
+      color: var(--accent2);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    #status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--offline);
+      box-shadow: 0 0 6px var(--offline);
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    #status-dot.online {
+      background: var(--online);
+      box-shadow: 0 0 6px var(--online);
+    }
+
+    #status-label { font-size: 0.75rem; color: var(--text2); }
+
+    main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto 1fr;
+      gap: 16px;
+      padding: 16px;
+      max-width: 1100px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    section h2 {
+      font-size: 0.75rem;
+      color: var(--accent);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── D-Pad ─────────────────────────────── */
+    #section-head { grid-column: 1; grid-row: 1; }
+
+    .dpad {
+      display: grid;
+      grid-template-columns: repeat(3, 54px);
+      grid-template-rows: repeat(3, 54px);
+      gap: 6px;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+
+    .dpad-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 1.2rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s, border-color 0.15s;
+      user-select: none;
+    }
+    .dpad-btn:hover  { background: var(--border); border-color: var(--accent); }
+    .dpad-btn:active { background: var(--accent); }
+    .dpad-btn.center { font-size: 0.65rem; letter-spacing: 0.05em; color: var(--text2); }
+    .dpad-btn.empty  { visibility: hidden; }
+
+    .quick-btns {
+      display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+    }
+
+    .quick-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text2);
+      font-size: 0.72rem;
+      padding: 6px 12px;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      transition: background 0.15s, color 0.15s;
+    }
+    .quick-btn:hover { background: var(--border); color: var(--text); }
+
+    /* ── LCD ───────────────────────────────── */
+    #section-lcd { grid-column: 2; grid-row: 1; }
+
+    .lcd-screen {
+      background: #001a0d;
+      border: 2px solid #003322;
+      border-radius: 4px;
+      padding: 10px 14px;
+      font-size: 1rem;
+      letter-spacing: 0.12em;
+      color: #00ff88;
+      text-shadow: 0 0 8px #00ff88;
+      font-family: 'Courier New', monospace;
+      min-height: 52px;
+      display: flex; flex-direction: column; justify-content: center;
+      margin-bottom: 12px;
+    }
+    .lcd-screen .line { height: 1.4em; white-space: pre; }
+
+    .lcd-form { display: flex; gap: 8px; }
+    .lcd-form input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.85rem;
+      padding: 7px 10px;
+      outline: none;
+    }
+    .lcd-form input:focus { border-color: var(--accent); }
+    .lcd-form button {
+      background: var(--accent);
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.8rem;
+      padding: 7px 14px;
+      cursor: pointer;
+      letter-spacing: 0.08em;
+    }
+    .lcd-form button:hover { background: var(--accent2); }
+
+    /* ── Chat ──────────────────────────────── */
+    #section-chat { grid-column: 1 / 3; grid-row: 2; display: flex; flex-direction: column; }
+
+    .chat-log {
+      flex: 1;
+      min-height: 240px;
+      max-height: 340px;
+      overflow-y: auto;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .msg {
+      max-width: 80%;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .msg.user {
+      align-self: flex-end;
+      background: #1e1e35;
+      border: 1px solid #3333aa;
+      color: #aaaaff;
+    }
+    .msg.neo {
+      align-self: flex-start;
+      background: #1e0e0e;
+      border: 1px solid var(--accent);
+      color: var(--accent2);
+    }
+    .msg.system {
+      align-self: center;
+      background: transparent;
+      border: none;
+      color: var(--text2);
+      font-size: 0.72rem;
+      font-style: italic;
+    }
+    .msg .sender {
+      font-size: 0.65rem;
+      opacity: 0.6;
+      margin-bottom: 3px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .chat-form { display: flex; gap: 8px; }
+    .chat-form input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.9rem;
+      padding: 10px 14px;
+      outline: none;
+    }
+    .chat-form input:focus { border-color: var(--accent); }
+    .chat-form input::placeholder { color: var(--text2); }
+    .chat-form button {
+      background: var(--accent);
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.85rem;
+      padding: 10px 20px;
+      cursor: pointer;
+      letter-spacing: 0.08em;
+    }
+    .chat-form button:hover { background: var(--accent2); }
+    .chat-form button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div id="status-dot"></div>
+  <h1>Neo Control Center</h1>
+  <span id="status-label">Déconnecté</span>
+</header>
+
+<main>
+
+  <!-- ── HEAD CONTROL ── -->
+  <section id="section-head">
+    <h2>Contrôle de la tête</h2>
+    <div class="dpad">
+      <div class="dpad-btn empty"></div>
+      <button class="dpad-btn" id="btn-haut" title="Haut">▲</button>
+      <div class="dpad-btn empty"></div>
+
+      <button class="dpad-btn" id="btn-gauche" title="Gauche">◀</button>
+      <button class="dpad-btn center" id="btn-centre" title="Centrer">CTR</button>
+      <button class="dpad-btn" id="btn-droite" title="Droite">▶</button>
+
+      <div class="dpad-btn empty"></div>
+      <button class="dpad-btn" id="btn-bas" title="Bas">▼</button>
+      <div class="dpad-btn empty"></div>
+    </div>
+    <div class="quick-btns">
+      <button class="quick-btn" id="btn-repos">REPOS</button>
+    </div>
+  </section>
+
+  <!-- ── LCD ── -->
+  <section id="section-lcd">
+    <h2>Affichage LCD</h2>
+    <div class="lcd-screen" id="lcd-display">
+      <div class="line" id="lcd-l1">NEO READY         </div>
+      <div class="line" id="lcd-l2">                  </div>
+    </div>
+    <div class="lcd-form">
+      <input type="text" id="lcd-input" maxlength="32" placeholder="Texte à afficher…">
+      <button id="lcd-send">ENVOYER</button>
+    </div>
+  </section>
+
+  <!-- ── CHAT ── -->
+  <section id="section-chat">
+    <h2>Parler à Neo</h2>
+    <div class="chat-log" id="chat-log">
+      <div class="msg system">Connexion à OpenClaw…</div>
+    </div>
+    <form class="chat-form" id="chat-form">
+      <input type="text" id="chat-input" placeholder="Écris quelque chose à Neo…" autocomplete="off">
+      <button type="submit" id="chat-send">ENVOYER</button>
+    </form>
+  </section>
+
+</main>
+
+<script>
+const socket = io();
+
+// ── Status ──────────────────────────────────────────────────────
+const dot   = document.getElementById('status-dot');
+const label = document.getElementById('status-label');
+
+socket.on('connect',    () => { dot.classList.add('online'); label.textContent = 'Connecté'; });
+socket.on('disconnect', () => { dot.classList.remove('online'); label.textContent = 'Déconnecté'; });
+
+socket.on('mqtt_state', d => {
+  if (d.connected) {
+    dot.classList.add('online');
+    label.textContent = 'MQTT connecté';
+  } else {
+    dot.classList.remove('online');
+    label.textContent = 'MQTT déconnecté';
+  }
+});
+
+socket.on('neo_status', d => {
+  appendMsg('system', `[status] ${JSON.stringify(d)}`);
+});
+
+// ── D-Pad ────────────────────────────────────────────────────────
+const dpadMap = {
+  'btn-haut':   'tete_haut',
+  'btn-bas':    'tete_bas',
+  'btn-gauche': 'tete_gauche',
+  'btn-droite': 'tete_droite',
+  'btn-centre': 'tete_centre',
+  'btn-repos':  'repos',
+};
+Object.entries(dpadMap).forEach(([id, action]) => {
+  document.getElementById(id).addEventListener('click', () => {
+    socket.emit('command', { action });
+  });
+});
+
+// ── LCD ──────────────────────────────────────────────────────────
+const lcdInput = document.getElementById('lcd-input');
+const lcdSend  = document.getElementById('lcd-send');
+const lcdL1    = document.getElementById('lcd-l1');
+const lcdL2    = document.getElementById('lcd-l2');
+
+lcdSend.addEventListener('click', () => {
+  const texte = lcdInput.value.trim();
+  if (!texte) return;
+  socket.emit('command', { action: 'lcd', texte });
+  // Mirror on screen LCD preview
+  lcdL1.textContent = texte.substring(0, 16).padEnd(16);
+  lcdL2.textContent = texte.substring(16, 32).padEnd(16);
+  lcdInput.value = '';
+});
+lcdInput.addEventListener('keydown', e => { if (e.key === 'Enter') lcdSend.click(); });
+
+// ── Chat ─────────────────────────────────────────────────────────
+const chatLog   = document.getElementById('chat-log');
+const chatForm  = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
+const chatSend  = document.getElementById('chat-send');
+
+function appendMsg(type, text, sender) {
+  const div = document.createElement('div');
+  div.className = `msg ${type}`;
+  if (sender) {
+    const s = document.createElement('div');
+    s.className = 'sender';
+    s.textContent = sender;
+    div.appendChild(s);
+  }
+  const t = document.createElement('span');
+  t.textContent = text;
+  div.appendChild(t);
+  chatLog.appendChild(div);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+socket.on('chat_thinking', () => {
+  chatSend.disabled = true;
+  appendMsg('system', 'Neo réfléchit…');
+});
+
+socket.on('chat_reply', d => {
+  chatSend.disabled = false;
+  // Remove "thinking" message
+  const thinking = [...chatLog.querySelectorAll('.msg.system')].at(-1);
+  if (thinking && thinking.textContent.includes('réfléchit')) thinking.remove();
+  appendMsg('neo', d.text, 'Neo');
+});
+
+chatForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const msg = chatInput.value.trim();
+  if (!msg || chatSend.disabled) return;
+  appendMsg('user', msg, 'Toi');
+  socket.emit('chat', { message: msg });
+  chatInput.value = '';
+});
+</script>
+</body>
+</html>
