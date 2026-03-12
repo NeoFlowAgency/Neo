@@ -2,6 +2,7 @@ import json
 import os
 import threading
 import time
+import eventlet
 from collections import deque
 from flask import Flask, render_template, send_from_directory, jsonify, request, session
 from flask_socketio import SocketIO, emit
@@ -145,17 +146,22 @@ def api_status():
 
 @app.route("/api/neo/pending", methods=["GET"])
 def api_neo_pending():
-    """OpenClaw polls cet endpoint pour récupérer les messages utilisateur."""
-    global openclaw_ok, _openclaw_last_poll
+    """Long polling — bloque jusqu'à ce qu'un message arrive (max 25s).
+    OpenClaw re-appelle immédiatement → ~2 req/min au lieu de 20."""
+    global _openclaw_last_poll
     if not _check_openclaw_api_key():
         return jsonify({"error": "Unauthorized"}), 401
-    with _pending_lock:
-        messages = list(_pending)
-        _pending.clear()
-    openclaw_ok = True
     _openclaw_last_poll = time.time()
     socketio.emit("conn_state", get_conn_state())
-    return jsonify({"messages": messages})
+    # Attendre un message pendant au plus 25 secondes
+    deadline = time.time() + 25
+    while time.time() < deadline:
+        with _pending_lock:
+            if _pending:
+                msg = _pending.popleft()
+                return jsonify({"messages": [msg]})
+        eventlet.sleep(0.5)   # yield sans bloquer les autres requêtes
+    return jsonify({"messages": []})
 
 @app.route("/api/neo/message", methods=["POST"])
 def api_neo_message():
