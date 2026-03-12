@@ -1,20 +1,21 @@
 import json
+import os
 import threading
 import time
 import websocket
 from collections import deque
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, send_from_directory, jsonify
 from flask_socketio import SocketIO, emit
 import paho.mqtt.client as mqtt
 
-# ── Config ─────────────────────────────────────────────────────
-MQTT_HOST    = "72.61.111.8"
-MQTT_PORT    = 1883
-OPENCLAW_WS  = "ws://127.0.0.1:18789"
+# ── Config (env vars or defaults) ────────────────────────────
+MQTT_HOST    = os.environ.get("NEO_MQTT_HOST", "72.61.111.8")
+MQTT_PORT    = int(os.environ.get("NEO_MQTT_PORT", "1883"))
+OPENCLAW_WS  = os.environ.get("NEO_OPENCLAW_WS", "ws://72.61.111.8:18789")
 TOPIC_CMD    = "neo/commandes"
 TOPIC_STATUS = "neo/status"
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", static_url_path="")
 app.config["SECRET_KEY"] = "neo-secret"
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
@@ -29,7 +30,10 @@ logs             = deque(maxlen=400)
 def log(level, msg):
     entry = {"t": time.strftime("%H:%M:%S"), "l": level, "m": msg}
     logs.append(entry)
-    socketio.emit("log_entry", entry)
+    try:
+        socketio.emit("log_entry", entry)
+    except Exception:
+        pass
     print(f"[{level}] {msg}")
 
 # ── MQTT ──────────────────────────────────────────────────────
@@ -40,7 +44,7 @@ def on_mqtt_connect(client, userdata, flags, rc):
     if rc == 0:
         mqtt_connected = True
         client.subscribe(TOPIC_STATUS)
-        log("OK", "MQTT connecté au broker")
+        log("OK", f"MQTT connecté au broker ({MQTT_HOST})")
         socketio.emit("conn_state", get_conn_state())
     else:
         log("ERR", f"MQTT échec connexion code={rc}")
@@ -75,9 +79,13 @@ def mqtt_loop():
             time.sleep(5)
 
 def send_command(action, **kwargs):
+    if not mqtt_connected:
+        log("WARN", f"MQTT non connecté — commande {action} ignorée")
+        return False
     payload = {"action": action, **kwargs}
     mqtt_client.publish(TOPIC_CMD, json.dumps(payload))
     log("CMD", f"→ {action} {kwargs if kwargs else ''}")
+    return True
 
 # ── OpenClaw ──────────────────────────────────────────────────
 _oc_ws   = None
@@ -89,7 +97,8 @@ def openclaw_send(message):
     with _oc_lock:
         try:
             if _oc_ws is None or not _oc_ws.connected:
-                _oc_ws = websocket.create_connection(OPENCLAW_WS, timeout=10)
+                log("INFO", f"Connexion à OpenClaw ({OPENCLAW_WS})…")
+                _oc_ws = websocket.create_connection(OPENCLAW_WS, timeout=15)
             _oc_id += 1
             req = {
                 "method": "agent.send_message",
@@ -101,13 +110,17 @@ def openclaw_send(message):
             data = json.loads(raw)
             openclaw_ok = True
             socketio.emit("conn_state", get_conn_state())
-            return data.get("result", {}).get("output", "")
+            output = data.get("result", {}).get("output", "")
+            if not output:
+                log("WARN", "OpenClaw a répondu avec un message vide")
+                return "Neo n'a pas pu formuler de réponse."
+            return output
         except Exception as e:
             openclaw_ok = False
             _oc_ws = None
             log("ERR", f"OpenClaw: {e}")
             socketio.emit("conn_state", get_conn_state())
-            return f"Erreur connexion OpenClaw: {e}"
+            return None
 
 # ── Helpers ───────────────────────────────────────────────────
 def get_conn_state():
@@ -121,7 +134,11 @@ def get_conn_state():
 # ── Routes ────────────────────────────────────────────────────
 @app.route("/")
 def index():
-    return render_template("index.html")
+    # Serve React build if available, otherwise fallback to templates
+    try:
+        return send_from_directory("static", "index.html")
+    except Exception:
+        return render_template("index.html")
 
 @app.route("/api/status")
 def api_status():
@@ -143,7 +160,6 @@ def on_command(data):
     action = data.get("action")
     if not action:
         return
-    # Update local servo state for directional commands
     step = 15
     if action == "tete_gauche":
         servo_state["pan"] = max(30,  servo_state["pan"] - step)
@@ -180,12 +196,23 @@ def on_chat(data):
     emit("chat_thinking", {})
 
     def _ask():
-        reply = openclaw_send(message)
-        log("CHAT", f"Neo → {reply[:100]}")
-        socketio.emit("chat_reply", {"text": reply})
-        if reply:
-            send_command("lcd", texte=f"Neo: {reply[:28]}")
-            send_command("dire", texte=reply[:200])
+        try:
+            reply = openclaw_send(message)
+            if reply is None:
+                # Connection failed
+                socketio.emit("chat_reply", {
+                    "text": f"Je n'arrive pas à me connecter à OpenClaw ({OPENCLAW_WS}). "
+                            f"Vérifie que le serveur est lancé et que le port est accessible."
+                })
+                return
+            log("CHAT", f"Neo → {reply[:100]}")
+            socketio.emit("chat_reply", {"text": reply})
+            if reply and not reply.startswith("Erreur"):
+                send_command("lcd", texte=f"Neo: {reply[:28]}")
+                send_command("dire", texte=reply[:200])
+        except Exception as e:
+            log("ERR", f"Chat error: {e}")
+            socketio.emit("chat_reply", {"text": f"Erreur interne: {e}"})
 
     threading.Thread(target=_ask, daemon=True).start()
 
@@ -196,61 +223,107 @@ def on_test(data):
 
     if comp == "mqtt":
         result["ok"]  = mqtt_connected
-        result["msg"] = "Broker MQTT joignable" if mqtt_connected else "MQTT non connecté"
+        result["msg"] = f"Broker MQTT connecté ({MQTT_HOST})" if mqtt_connected else f"MQTT non connecté à {MQTT_HOST}:{MQTT_PORT}"
 
     elif comp == "openclaw":
         def _ping():
-            r = openclaw_send("Réponds juste: PONG")
-            ok = bool(r and len(r) < 200)
-            socketio.emit("test_result", {"component": "openclaw", "ok": ok,
-                                          "msg": f"Réponse: {r[:60]}" if ok else "Pas de réponse"})
+            try:
+                r = openclaw_send("Réponds juste: PONG")
+                if r is None:
+                    socketio.emit("test_result", {"component": "openclaw", "ok": False,
+                                                  "msg": f"Impossible de se connecter à {OPENCLAW_WS}"})
+                else:
+                    socketio.emit("test_result", {"component": "openclaw", "ok": True,
+                                                  "msg": f"Réponse: {r[:80]}"})
+            except Exception as e:
+                socketio.emit("test_result", {"component": "openclaw", "ok": False,
+                                              "msg": f"Erreur: {e}"})
         threading.Thread(target=_ping, daemon=True).start()
         return
 
     elif comp == "lcd":
-        send_command("lcd", texte="TEST LCD OK     ")
-        result["ok"]  = mqtt_connected
-        result["msg"] = "Pattern envoyé au LCD"
+        ok = send_command("lcd", texte="TEST LCD OK     ")
+        result["ok"]  = ok
+        result["msg"] = "Commande envoyée au LCD" if ok else "MQTT non connecté — commande non envoyée"
 
     elif comp == "buzzer":
-        send_command("buzzer_test")
-        result["ok"]  = mqtt_connected
-        result["msg"] = "Signal envoyé au buzzer"
+        ok = send_command("buzzer_test")
+        result["ok"]  = ok
+        result["msg"] = "Signal envoyé au buzzer" if ok else "MQTT non connecté — commande non envoyée"
 
     elif comp == "servo_pan":
-        send_command("servo_direct", pan=60,  tilt=servo_state["tilt"])
-        time.sleep(0.6)
-        send_command("servo_direct", pan=120, tilt=servo_state["tilt"])
-        time.sleep(0.6)
-        send_command("servo_direct", pan=90,  tilt=servo_state["tilt"])
-        servo_state["pan"] = 90
-        result["ok"]  = True
-        result["msg"] = "Sweep Pan gauche→droite→centre"
+        if not mqtt_connected:
+            result["ok"]  = False
+            result["msg"] = "MQTT non connecté — impossible de tester les servos"
+        else:
+            def _sweep():
+                send_command("servo_direct", pan=60,  tilt=servo_state["tilt"])
+                time.sleep(0.6)
+                send_command("servo_direct", pan=120, tilt=servo_state["tilt"])
+                time.sleep(0.6)
+                send_command("servo_direct", pan=90,  tilt=servo_state["tilt"])
+                servo_state["pan"] = 90
+                socketio.emit("servo_state", servo_state)
+                socketio.emit("test_result", {"component": "servo_pan", "ok": True,
+                                              "msg": "Sweep Pan: 60° → 120° → 90° (vérifie visuellement)"})
+            threading.Thread(target=_sweep, daemon=True).start()
+            return
 
     elif comp == "servo_tilt":
-        send_command("servo_direct", pan=servo_state["pan"], tilt=60)
-        time.sleep(0.6)
-        send_command("servo_direct", pan=servo_state["pan"], tilt=120)
-        time.sleep(0.6)
-        send_command("servo_direct", pan=servo_state["pan"], tilt=90)
-        servo_state["tilt"] = 90
-        result["ok"]  = True
-        result["msg"] = "Sweep Tilt haut→bas→centre"
+        if not mqtt_connected:
+            result["ok"]  = False
+            result["msg"] = "MQTT non connecté — impossible de tester les servos"
+        else:
+            def _sweep():
+                send_command("servo_direct", pan=servo_state["pan"], tilt=60)
+                time.sleep(0.6)
+                send_command("servo_direct", pan=servo_state["pan"], tilt=120)
+                time.sleep(0.6)
+                send_command("servo_direct", pan=servo_state["pan"], tilt=90)
+                servo_state["tilt"] = 90
+                socketio.emit("servo_state", servo_state)
+                socketio.emit("test_result", {"component": "servo_tilt", "ok": True,
+                                              "msg": "Sweep Tilt: 60° → 120° → 90° (vérifie visuellement)"})
+            threading.Thread(target=_sweep, daemon=True).start()
+            return
 
     elif comp == "full":
+        if not mqtt_connected:
+            result = {"component": "full", "ok": False, "msg": "MQTT non connecté — test complet impossible"}
+            emit("test_result", result)
+            return
+
         def _full():
-            steps = [
-                ("lcd",  {"texte": "TEST COMPLET..."}),
-                ("tete_gauche", {}), ("tete_droite", {}),
-                ("tete_haut",   {}), ("tete_bas",    {}),
-                ("tete_centre", {}),
-                ("lcd",  {"texte": "TEST OK!        "}),
-            ]
-            for action, kwargs in steps:
-                send_command(action, **kwargs)
-                time.sleep(0.5)
-            socketio.emit("test_result", {"component": "full", "ok": True,
-                                          "msg": "Test complet terminé avec succès"})
+            errors = []
+            # Test MQTT
+            if not mqtt_connected:
+                errors.append("MQTT déconnecté")
+            # Test OpenClaw
+            oc_reply = openclaw_send("PONG test")
+            if oc_reply is None:
+                errors.append("OpenClaw inaccessible")
+            # Test servos
+            send_command("tete_gauche")
+            time.sleep(0.4)
+            send_command("tete_droite")
+            time.sleep(0.4)
+            send_command("tete_haut")
+            time.sleep(0.4)
+            send_command("tete_bas")
+            time.sleep(0.4)
+            send_command("tete_centre")
+            time.sleep(0.3)
+            # Test LCD
+            send_command("lcd", texte="TEST COMPLET OK!")
+            time.sleep(0.3)
+
+            if errors:
+                socketio.emit("test_result", {"component": "full", "ok": False,
+                                              "msg": f"Partiel — erreurs: {', '.join(errors)}"})
+            else:
+                socketio.emit("test_result", {"component": "full", "ok": True,
+                                              "msg": "Tous les composants OK"})
+
         threading.Thread(target=_full, daemon=True).start()
         return
 
@@ -269,5 +342,6 @@ def on_clear_logs():
 # ── Main ──────────────────────────────────────────────────────
 if __name__ == "__main__":
     threading.Thread(target=mqtt_loop, daemon=True).start()
-    log("INFO", "Neo Control Center démarré sur http://0.0.0.0:5000")
+    log("INFO", f"Neo Control Center démarré sur http://0.0.0.0:5000")
+    log("INFO", f"MQTT → {MQTT_HOST}:{MQTT_PORT} | OpenClaw → {OPENCLAW_WS}")
     socketio.run(app, host="0.0.0.0", port=5000, debug=False)
