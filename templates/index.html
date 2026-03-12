@@ -1,427 +1,1261 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Neo Control Center</title>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEO — Control Center</title>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+/* ═══════════════════════════════════════════════════════════
+   RESET & VARIABLES
+═══════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    :root {
-      --bg: #0a0a0f;
-      --surface: #12121a;
-      --surface2: #1a1a26;
-      --border: #2a2a3d;
-      --accent: #e02020;
-      --accent2: #ff4444;
-      --text: #e8e8f0;
-      --text2: #888899;
-      --online: #22cc66;
-      --offline: #cc2222;
-    }
+:root {
+  --bg:        #07070f;
+  --bg2:       #0d0d1a;
+  --surface:   #111122;
+  --surface2:  #181830;
+  --border:    #252545;
+  --border2:   #353560;
+  --red:       #e02020;
+  --red2:      #ff4040;
+  --red-dim:   #601010;
+  --cyan:      #00d4ff;
+  --cyan-dim:  #003344;
+  --green:     #22cc66;
+  --green-dim: #0a3320;
+  --yellow:    #ffcc00;
+  --text:      #dde0f0;
+  --text2:     #7780aa;
+  --text3:     #444466;
+  --font:      'Courier New', 'Lucida Console', monospace;
+}
 
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Courier New', monospace;
-      min-height: 100vh;
-      display: grid;
-      grid-template-rows: auto 1fr;
-    }
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  overflow: hidden;
+}
 
-    header {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 12px 24px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
+/* ═══════════════════════════════════════════════════════════
+   ANIMATIONS
+═══════════════════════════════════════════════════════════ */
+@keyframes pulse-red {
+  0%,100% { box-shadow: 0 0 4px var(--red); }
+  50%      { box-shadow: 0 0 12px var(--red2), 0 0 24px var(--red); }
+}
+@keyframes pulse-green {
+  0%,100% { box-shadow: 0 0 4px var(--green); }
+  50%      { box-shadow: 0 0 12px var(--green), 0 0 24px var(--green); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideRight {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes scanline {
+  0%   { top: -8%; }
+  100% { top: 108%; }
+}
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes glitch1 {
+  0%,100% { clip-path: none; transform: none; }
+  92%     { clip-path: polygon(0 10%,100% 10%,100% 30%,0 30%); transform: translateX(-3px); }
+  94%     { clip-path: polygon(0 60%,100% 60%,100% 80%,0 80%); transform: translateX(3px); }
+  96%     { clip-path: none; transform: none; }
+}
+@keyframes dot-wave {
+  0%,100% { transform: scaleY(0.4); }
+  50%     { transform: scaleY(1.4); }
+}
 
-    header h1 {
-      font-size: 1.4rem;
-      color: var(--accent2);
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-    }
+/* ═══════════════════════════════════════════════════════════
+   LAYOUT
+═══════════════════════════════════════════════════════════ */
+#app {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  grid-template-rows: 52px 1fr;
+  height: 100vh;
+}
 
-    #status-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      background: var(--offline);
-      box-shadow: 0 0 6px var(--offline);
-      transition: background 0.3s, box-shadow 0.3s;
-    }
-    #status-dot.online {
-      background: var(--online);
-      box-shadow: 0 0 6px var(--online);
-    }
+/* ── Topbar ── */
+#topbar {
+  grid-column: 1 / 3;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 16px;
+  position: relative;
+  overflow: hidden;
+}
+#topbar::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--red), transparent);
+  top: -2px;
+  animation: scanline 3s linear infinite;
+  opacity: 0.4;
+}
+#logo {
+  font-size: 1.3rem;
+  font-weight: bold;
+  color: var(--red2);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  animation: glitch1 8s infinite;
+  cursor: default;
+  user-select: none;
+}
+#logo span { color: var(--text2); font-size: 0.65rem; letter-spacing: 0.15em; }
+.topbar-sep { flex: 1; }
+.conn-pill {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 0.7rem;
+  color: var(--text2);
+  letter-spacing: 0.08em;
+  transition: border-color 0.3s;
+}
+.conn-pill.ok  { border-color: var(--green); color: var(--text); }
+.conn-pill.err { border-color: var(--red-dim); }
+.conn-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--text3);
+  transition: background 0.3s;
+}
+.conn-pill.ok  .conn-dot { background: var(--green); animation: pulse-green 2s infinite; }
+.conn-pill.err .conn-dot { background: var(--red); animation: pulse-red 2s infinite; }
 
-    #status-label { font-size: 0.75rem; color: var(--text2); }
+/* ── Sidebar ── */
+#sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  gap: 4px;
+}
+.nav-btn {
+  width: 44px; height: 44px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text3);
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s, color 0.2s;
+  position: relative;
+}
+.nav-btn:hover { background: var(--surface2); color: var(--text2); }
+.nav-btn.active {
+  background: var(--red-dim);
+  color: var(--red2);
+  box-shadow: inset 2px 0 0 var(--red);
+}
+.nav-btn .tooltip {
+  position: absolute;
+  left: 52px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-size: 0.7rem;
+  padding: 4px 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 100;
+  letter-spacing: 0.08em;
+}
+.nav-btn:hover .tooltip { opacity: 1; }
 
-    main {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: auto 1fr;
-      gap: 16px;
-      padding: 16px;
-      max-width: 1100px;
-      margin: 0 auto;
-      width: 100%;
-    }
+/* ── Content ── */
+#content {
+  overflow: hidden;
+  position: relative;
+  background: var(--bg);
+}
+.section {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: 20px;
+  display: none;
+  animation: fadeIn 0.25s ease;
+}
+.section.active { display: block; }
 
-    section {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 16px;
-    }
+/* ─────────────────── SCROLLBAR ─────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
-    section h2 {
-      font-size: 0.75rem;
-      color: var(--accent);
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      margin-bottom: 14px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-    }
+/* ═══════════════════════════════════════════════════════════
+   COMPONENTS
+═══════════════════════════════════════════════════════════ */
+.sec-title {
+  font-size: 0.65rem;
+  color: var(--red);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.sec-title::before {
+  content: '';
+  display: inline-block;
+  width: 3px; height: 14px;
+  background: var(--red);
+  border-radius: 2px;
+}
 
-    /* ── D-Pad ─────────────────────────────── */
-    #section-head { grid-column: 1; grid-row: 1; }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  transition: border-color 0.2s;
+}
+.card:hover { border-color: var(--border2); }
+.card-title {
+  font-size: 0.62rem;
+  color: var(--text2);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
 
-    .dpad {
-      display: grid;
-      grid-template-columns: repeat(3, 54px);
-      grid-template-rows: repeat(3, 54px);
-      gap: 6px;
-      justify-content: center;
-      margin-bottom: 14px;
-    }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 
-    .dpad-btn {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      font-size: 1.2rem;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: background 0.15s, border-color 0.15s;
-      user-select: none;
-    }
-    .dpad-btn:hover  { background: var(--border); border-color: var(--accent); }
-    .dpad-btn:active { background: var(--accent); }
-    .dpad-btn.center { font-size: 0.65rem; letter-spacing: 0.05em; color: var(--text2); }
-    .dpad-btn.empty  { visibility: hidden; }
+.btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text2);
+  font-family: var(--font);
+  font-size: 0.72rem;
+  padding: 8px 14px;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  text-transform: uppercase;
+}
+.btn:hover { background: var(--border); color: var(--text); border-color: var(--border2); }
+.btn:active { transform: scale(0.97); }
+.btn.primary { background: var(--red); border-color: var(--red); color: #fff; }
+.btn.primary:hover { background: var(--red2); border-color: var(--red2); }
+.btn.success { background: #154428; border-color: var(--green); color: var(--green); }
+.btn.danger  { background: var(--red-dim); border-color: var(--red); color: var(--red2); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-    .quick-btns {
-      display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
-    }
+input[type=text], input[type=range], textarea {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+input[type=text]:focus, textarea:focus { border-color: var(--red); }
+input[type=text] { padding: 8px 12px; width: 100%; }
+input[type=text]::placeholder { color: var(--text3); }
 
-    .quick-btn {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text2);
-      font-size: 0.72rem;
-      padding: 6px 12px;
-      cursor: pointer;
-      letter-spacing: 0.05em;
-      transition: background 0.15s, color 0.15s;
-    }
-    .quick-btn:hover { background: var(--border); color: var(--text); }
+/* ═══════════════════════════════════════════════════════════
+   SECTION: DASHBOARD
+═══════════════════════════════════════════════════════════ */
+#dash-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.status-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px;
+  transition: border-color 0.3s;
+}
+.status-card.ok  { border-color: var(--green); background: linear-gradient(135deg, var(--surface), var(--green-dim)); }
+.status-card.err { border-color: var(--red-dim); }
+.status-card .icon {
+  font-size: 1.6rem;
+  width: 42px; height: 42px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg2);
+  border-radius: 8px;
+}
+.status-card .label { font-size: 0.62rem; color: var(--text2); letter-spacing: 0.15em; text-transform: uppercase; }
+.status-card .value { font-size: 0.9rem; color: var(--text); margin-top: 2px; }
+.status-card.ok .value { color: var(--green); }
 
-    /* ── LCD ───────────────────────────────── */
-    #section-lcd { grid-column: 2; grid-row: 1; }
+#dash-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-    .lcd-screen {
-      background: #001a0d;
-      border: 2px solid #003322;
-      border-radius: 4px;
-      padding: 10px 14px;
-      font-size: 1rem;
-      letter-spacing: 0.12em;
-      color: #00ff88;
-      text-shadow: 0 0 8px #00ff88;
-      font-family: 'Courier New', monospace;
-      min-height: 52px;
-      display: flex; flex-direction: column; justify-content: center;
-      margin-bottom: 12px;
-    }
-    .lcd-screen .line { height: 1.4em; white-space: pre; }
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
 
-    .lcd-form { display: flex; gap: 8px; }
-    .lcd-form input {
-      flex: 1;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      font-family: inherit;
-      font-size: 0.85rem;
-      padding: 7px 10px;
-      outline: none;
-    }
-    .lcd-form input:focus { border-color: var(--accent); }
-    .lcd-form button {
-      background: var(--accent);
-      border: none;
-      border-radius: 6px;
-      color: #fff;
-      font-family: inherit;
-      font-size: 0.8rem;
-      padding: 7px 14px;
-      cursor: pointer;
-      letter-spacing: 0.08em;
-    }
-    .lcd-form button:hover { background: var(--accent2); }
+#activity-log {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.activity-item {
+  display: flex; gap: 8px; align-items: baseline;
+  font-size: 0.72rem;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  animation: slideRight 0.2s ease;
+}
+.activity-item .at { color: var(--text3); flex-shrink: 0; }
+.activity-item .al { font-size: 0.6rem; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; letter-spacing: 0.05em; }
+.al.OK   { background: var(--green-dim); color: var(--green); }
+.al.ERR  { background: var(--red-dim);   color: var(--red2); }
+.al.WARN { background: #332200;          color: var(--yellow); }
+.al.INFO { background: var(--cyan-dim);  color: var(--cyan); }
+.al.CMD  { background: #1a1035;          color: #aa88ff; }
+.al.CHAT { background: #101a2a;          color: #6699ff; }
+.al.TEST { background: #1a2210;          color: #88cc44; }
+.activity-item .am { color: var(--text2); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-    /* ── Chat ──────────────────────────────── */
-    #section-chat { grid-column: 1 / 3; grid-row: 2; display: flex; flex-direction: column; }
+/* ═══════════════════════════════════════════════════════════
+   SECTION: COMMUNICATION
+═══════════════════════════════════════════════════════════ */
+#chat-wrapper {
+  display: grid;
+  grid-template-rows: 1fr auto auto;
+  height: calc(100vh - 130px);
+  gap: 12px;
+}
+#chat-log {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.msg {
+  max-width: 75%;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.83rem;
+  line-height: 1.5;
+  animation: fadeIn 0.2s ease;
+}
+.msg.user {
+  align-self: flex-end;
+  background: #12123a;
+  border: 1px solid #2a2a80;
+  color: #8888ff;
+}
+.msg.neo {
+  align-self: flex-start;
+  background: #1e0808;
+  border: 1px solid var(--red-dim);
+  color: #ff8888;
+}
+.msg.system {
+  align-self: center;
+  background: transparent;
+  border: none;
+  color: var(--text3);
+  font-size: 0.68rem;
+  font-style: italic;
+}
+.msg .sender {
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin-bottom: 4px;
+}
+.msg.neo .sender { color: var(--red); }
+.msg.user .sender { color: #6666ff; }
 
-    .chat-log {
-      flex: 1;
-      min-height: 240px;
-      max-height: 340px;
-      overflow-y: auto;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 12px;
-      margin-bottom: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
+.thinking-dots span {
+  display: inline-block;
+  width: 6px; height: 16px;
+  background: var(--red);
+  border-radius: 3px;
+  margin: 0 2px;
+  animation: dot-wave 0.9s ease-in-out infinite;
+}
+.thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
 
-    .msg {
-      max-width: 80%;
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      line-height: 1.5;
-      word-break: break-word;
-    }
-    .msg.user {
-      align-self: flex-end;
-      background: #1e1e35;
-      border: 1px solid #3333aa;
-      color: #aaaaff;
-    }
-    .msg.neo {
-      align-self: flex-start;
-      background: #1e0e0e;
-      border: 1px solid var(--accent);
-      color: var(--accent2);
-    }
-    .msg.system {
-      align-self: center;
-      background: transparent;
-      border: none;
-      color: var(--text2);
-      font-size: 0.72rem;
-      font-style: italic;
-    }
-    .msg .sender {
-      font-size: 0.65rem;
-      opacity: 0.6;
-      margin-bottom: 3px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-    }
+#quick-phrases {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
 
-    .chat-form { display: flex; gap: 8px; }
-    .chat-form input {
-      flex: 1;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      font-family: inherit;
-      font-size: 0.9rem;
-      padding: 10px 14px;
-      outline: none;
-    }
-    .chat-form input:focus { border-color: var(--accent); }
-    .chat-form input::placeholder { color: var(--text2); }
-    .chat-form button {
-      background: var(--accent);
-      border: none;
-      border-radius: 6px;
-      color: #fff;
-      font-family: inherit;
-      font-size: 0.85rem;
-      padding: 10px 20px;
-      cursor: pointer;
-      letter-spacing: 0.08em;
-    }
-    .chat-form button:hover { background: var(--accent2); }
-    .chat-form button:disabled { opacity: 0.4; cursor: not-allowed; }
+#chat-input-row { display: flex; gap: 8px; }
+#chat-input-row input { flex: 1; }
 
-    /* scrollbar */
-    ::-webkit-scrollbar { width: 5px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-  </style>
+/* ═══════════════════════════════════════════════════════════
+   SECTION: CORPS (BODY)
+═══════════════════════════════════════════════════════════ */
+#body-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: auto auto;
+  gap: 12px;
+}
+
+/* Head visualizer */
+#head-viz-card { grid-column: 1; grid-row: 1 / 3; }
+#head-viz {
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+}
+#viz-pan-val, #viz-tilt-val {
+  display: flex; justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--text2);
+  margin-top: 6px;
+}
+#viz-pan-val span, #viz-tilt-val span { color: var(--cyan); }
+
+/* D-Pad */
+#dpad-card { grid-column: 2; grid-row: 1; }
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 52px);
+  grid-template-rows: repeat(3, 52px);
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.dp {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s, border-color 0.1s;
+  user-select: none;
+}
+.dp:hover  { background: var(--border); border-color: var(--border2); }
+.dp:active, .dp.pressed { background: var(--red); border-color: var(--red2); }
+.dp.ctr    { font-size: 0.58rem; color: var(--text2); letter-spacing: 0.05em; }
+.dp.empty  { visibility: hidden; }
+
+.speed-row {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 0.72rem; color: var(--text2);
+}
+.speed-row input[type=range] {
+  flex: 1; height: 4px;
+  accent-color: var(--red);
+}
+
+/* Sliders */
+#slider-card { grid-column: 2; grid-row: 2; }
+.slider-group { margin-bottom: 14px; }
+.slider-label {
+  display: flex; justify-content: space-between;
+  font-size: 0.7rem; color: var(--text2);
+  margin-bottom: 6px;
+  letter-spacing: 0.08em;
+}
+.slider-label span { color: var(--cyan); font-size: 0.8rem; }
+input[type=range].servo {
+  width: 100%; height: 6px;
+  accent-color: var(--red);
+  cursor: pointer;
+}
+
+/* Quick poses */
+#poses-card { grid-column: 1 / 3; }
+.pose-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+
+/* Keyboard hint */
+#kb-hint {
+  grid-column: 1 / 3;
+  display: flex; gap: 8px; align-items: center;
+  font-size: 0.65rem; color: var(--text3);
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.key {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 20px;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  font-size: 0.62rem;
+  color: var(--text2);
+  padding: 0 5px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SECTION: AFFICHAGE (LCD)
+═══════════════════════════════════════════════════════════ */
+#lcd-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+#lcd-layout .full { grid-column: 1 / 3; }
+
+.lcd-screen {
+  background: #001c0d;
+  border: 2px solid #003322;
+  border-radius: 6px;
+  padding: 16px 20px;
+  font-size: 1.05rem;
+  letter-spacing: 0.14em;
+  color: #00ff88;
+  text-shadow: 0 0 10px #00ff8899;
+  font-family: var(--font);
+  position: relative;
+  overflow: hidden;
+}
+.lcd-screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px);
+  pointer-events: none;
+}
+.lcd-line { height: 1.5em; white-space: pre; }
+
+.presets-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+/* ═══════════════════════════════════════════════════════════
+   SECTION: DIAGNOSTICS
+═══════════════════════════════════════════════════════════ */
+#diag-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 12px;
+  height: calc(100vh - 130px);
+}
+#diag-tests { grid-column: 1; grid-row: 1; }
+#diag-info  { grid-column: 2; grid-row: 1; }
+#diag-logs  { grid-column: 1 / 3; grid-row: 2; display: flex; flex-direction: column; }
+
+.test-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.test-row:last-child { border-bottom: none; }
+.test-row .test-name {
+  flex: 1;
+  font-size: 0.78rem;
+  color: var(--text);
+  letter-spacing: 0.05em;
+}
+.test-row .test-desc { font-size: 0.65rem; color: var(--text3); margin-top: 2px; }
+.test-badge {
+  font-size: 0.62rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  min-width: 50px;
+  text-align: center;
+}
+.test-badge.idle    { background: var(--bg2);        color: var(--text3); border: 1px solid var(--border); }
+.test-badge.running { background: #112233;            color: var(--cyan);  border: 1px solid var(--cyan); }
+.test-badge.ok      { background: var(--green-dim);  color: var(--green); border: 1px solid var(--green); }
+.test-badge.fail    { background: var(--red-dim);    color: var(--red2);  border: 1px solid var(--red); }
+
+.info-row {
+  display: flex; justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.75rem;
+}
+.info-row:last-child { border-bottom: none; }
+.info-row .ik { color: var(--text2); }
+.info-row .iv { color: var(--cyan); font-size: 0.8rem; }
+
+#log-console {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-y: auto;
+  font-size: 0.72rem;
+  line-height: 1.7;
+}
+.log-line { display: flex; gap: 8px; animation: slideRight 0.15s ease; }
+.log-line .lt { color: var(--text3); flex-shrink: 0; }
+.log-line .ll { font-size: 0.6rem; flex-shrink: 0; min-width: 40px; text-align: center; padding: 1px 4px; border-radius: 2px; }
+.log-line .lm { color: var(--text2); }
+.ll.OK   { background: var(--green-dim); color: var(--green); }
+.ll.ERR  { background: var(--red-dim);   color: var(--red2); }
+.ll.WARN { background: #332200;          color: var(--yellow); }
+.ll.INFO { background: var(--cyan-dim);  color: var(--cyan); }
+.ll.CMD  { background: #1a1035;          color: #aa88ff; }
+.ll.CHAT { background: #101a2a;          color: #6699ff; }
+.ll.TEST { background: #1a2210;          color: #88cc44; }
+
+#log-controls { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+#log-controls .lc-label { font-size: 0.7rem; color: var(--text2); flex: 1; }
+
+/* ─── Spinner ─── */
+.spinner {
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--cyan);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+}
+</style>
 </head>
 <body>
+<div id="app">
 
-<header>
-  <div id="status-dot"></div>
-  <h1>Neo Control Center</h1>
-  <span id="status-label">Déconnecté</span>
+<!-- ══════════════ TOPBAR ══════════════ -->
+<header id="topbar">
+  <div id="logo">NEO <span>// CONTROL CENTER v2</span></div>
+  <div class="topbar-sep"></div>
+  <div class="conn-pill" id="pill-mqtt">
+    <div class="conn-dot"></div>MQTT
+  </div>
+  <div class="conn-pill" id="pill-openclaw">
+    <div class="conn-dot"></div>OPENCLAW
+  </div>
+  <div class="conn-pill" id="pill-esp32">
+    <div class="conn-dot"></div>ESP32
+  </div>
 </header>
 
-<main>
+<!-- ══════════════ SIDEBAR ══════════════ -->
+<nav id="sidebar">
+  <button class="nav-btn active" data-section="dashboard">
+    ◈<span class="tooltip">TABLEAU DE BORD</span>
+  </button>
+  <button class="nav-btn" data-section="comm">
+    ◉<span class="tooltip">COMMUNICATION</span>
+  </button>
+  <button class="nav-btn" data-section="corps">
+    ⬡<span class="tooltip">CORPS</span>
+  </button>
+  <button class="nav-btn" data-section="affichage">
+    ▦<span class="tooltip">AFFICHAGE LCD</span>
+  </button>
+  <button class="nav-btn" data-section="diag">
+    ⚙<span class="tooltip">DIAGNOSTICS</span>
+  </button>
+</nav>
 
-  <!-- ── HEAD CONTROL ── -->
-  <section id="section-head">
-    <h2>Contrôle de la tête</h2>
-    <div class="dpad">
-      <div class="dpad-btn empty"></div>
-      <button class="dpad-btn" id="btn-haut" title="Haut">▲</button>
-      <div class="dpad-btn empty"></div>
+<!-- ══════════════ CONTENT ══════════════ -->
+<main id="content">
 
-      <button class="dpad-btn" id="btn-gauche" title="Gauche">◀</button>
-      <button class="dpad-btn center" id="btn-centre" title="Centrer">CTR</button>
-      <button class="dpad-btn" id="btn-droite" title="Droite">▶</button>
+  <!-- ─── DASHBOARD ─── -->
+  <section class="section active" id="section-dashboard">
+    <div class="sec-title">Tableau de bord</div>
 
-      <div class="dpad-btn empty"></div>
-      <button class="dpad-btn" id="btn-bas" title="Bas">▼</button>
-      <div class="dpad-btn empty"></div>
+    <div id="dash-cards">
+      <div class="status-card" id="card-mqtt">
+        <div class="icon">📡</div>
+        <div>
+          <div class="label">MQTT Broker</div>
+          <div class="value" id="card-mqtt-val">Déconnecté</div>
+        </div>
+      </div>
+      <div class="status-card" id="card-openclaw">
+        <div class="icon">🧠</div>
+        <div>
+          <div class="label">OpenClaw IA</div>
+          <div class="value" id="card-openclaw-val">Inconnu</div>
+        </div>
+      </div>
+      <div class="status-card" id="card-esp32">
+        <div class="icon">🤖</div>
+        <div>
+          <div class="label">ESP32 Robot</div>
+          <div class="value" id="card-esp32-val">Hors ligne</div>
+        </div>
+      </div>
     </div>
-    <div class="quick-btns">
-      <button class="quick-btn" id="btn-repos">REPOS</button>
+
+    <div id="dash-bottom">
+      <div class="card">
+        <div class="card-title">Actions rapides</div>
+        <div class="quick-grid">
+          <button class="btn" onclick="cmd('tete_centre')">CENTRE</button>
+          <button class="btn" onclick="cmd('repos')">REPOS</button>
+          <button class="btn" onclick="cmd('tete_gauche')">◀ PAN</button>
+          <button class="btn" onclick="cmd('tete_droite')">PAN ▶</button>
+          <button class="btn" onclick="cmd('tete_haut')">▲ TILT</button>
+          <button class="btn" onclick="cmd('tete_bas')">TILT ▼</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Activité récente</div>
+        <div id="activity-log"></div>
+      </div>
     </div>
   </section>
 
-  <!-- ── LCD ── -->
-  <section id="section-lcd">
-    <h2>Affichage LCD</h2>
-    <div class="lcd-screen" id="lcd-display">
-      <div class="line" id="lcd-l1">NEO READY         </div>
-      <div class="line" id="lcd-l2">                  </div>
-    </div>
-    <div class="lcd-form">
-      <input type="text" id="lcd-input" maxlength="32" placeholder="Texte à afficher…">
-      <button id="lcd-send">ENVOYER</button>
+  <!-- ─── COMMUNICATION ─── -->
+  <section class="section" id="section-comm">
+    <div class="sec-title">Communication avec Neo</div>
+    <div id="chat-wrapper">
+      <div id="chat-log">
+        <div class="msg system">Connecté à OpenClaw — parle à Neo.</div>
+      </div>
+      <div id="quick-phrases">
+        <button class="btn" onclick="quickMsg('Bonjour Neo !')">Bonjour</button>
+        <button class="btn" onclick="quickMsg('Comment tu vas ?')">Comment ça va ?</button>
+        <button class="btn" onclick="quickMsg('Quel est ton nom ?')">Qui es-tu ?</button>
+        <button class="btn" onclick="quickMsg('Dis-moi une blague')">Blague</button>
+        <button class="btn" onclick="quickMsg('Présente-toi')">Présentation</button>
+      </div>
+      <div id="chat-input-row">
+        <input type="text" id="chat-input" placeholder="Écris quelque chose à Neo…" autocomplete="off">
+        <button class="btn primary" id="chat-send" onclick="sendChat()">ENVOYER</button>
+      </div>
     </div>
   </section>
 
-  <!-- ── CHAT ── -->
-  <section id="section-chat">
-    <h2>Parler à Neo</h2>
-    <div class="chat-log" id="chat-log">
-      <div class="msg system">Connexion à OpenClaw…</div>
+  <!-- ─── CORPS ─── -->
+  <section class="section" id="section-corps">
+    <div class="sec-title">Contrôle du corps</div>
+    <div id="body-layout">
+
+      <!-- Head viz -->
+      <div class="card" id="head-viz-card">
+        <div class="card-title">Position de la tête</div>
+        <svg id="head-viz" viewBox="0 0 180 180">
+          <defs>
+            <radialGradient id="g1" cx="50%" cy="50%" r="50%">
+              <stop offset="0%"   stop-color="#e02020" stop-opacity="0.15"/>
+              <stop offset="100%" stop-color="#e02020" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <!-- Grid -->
+          <line x1="90" y1="10" x2="90" y2="170" stroke="#252545" stroke-width="1"/>
+          <line x1="10" y1="90" x2="170" y2="90"  stroke="#252545" stroke-width="1"/>
+          <circle cx="90" cy="90" r="60" fill="none" stroke="#252545" stroke-width="1"/>
+          <circle cx="90" cy="90" r="30" fill="none" stroke="#1a1a30" stroke-width="1" stroke-dasharray="4 4"/>
+          <!-- Zone -->
+          <circle cx="90" cy="90" r="60" fill="url(#g1)"/>
+          <!-- Crosshair target -->
+          <circle id="viz-dot" cx="90" cy="90" r="6" fill="var(--red)" opacity="0.9"/>
+          <line id="viz-h" x1="70" y1="90" x2="110" y2="90" stroke="var(--red)" stroke-width="1" opacity="0.5"/>
+          <line id="viz-v" x1="90" y1="70" x2="90"  y2="110" stroke="var(--red)" stroke-width="1" opacity="0.5"/>
+        </svg>
+        <div id="viz-pan-val">PAN <span id="pan-num">90°</span></div>
+        <div id="viz-tilt-val">TILT <span id="tilt-num">90°</span></div>
+      </div>
+
+      <!-- D-Pad -->
+      <div class="card" id="dpad-card">
+        <div class="card-title">D-Pad directionnel</div>
+        <div class="dpad">
+          <div class="dp empty"></div>
+          <div class="dp" id="dp-up"    onmousedown="holdCmd('tete_haut')"   onmouseup="stopHold()" ontouchstart="holdCmd('tete_haut')"   ontouchend="stopHold()">▲</div>
+          <div class="dp empty"></div>
+          <div class="dp" id="dp-left"  onmousedown="holdCmd('tete_gauche')" onmouseup="stopHold()" ontouchstart="holdCmd('tete_gauche')" ontouchend="stopHold()">◀</div>
+          <div class="dp ctr"           onclick="cmd('tete_centre')">CTR</div>
+          <div class="dp" id="dp-right" onmousedown="holdCmd('tete_droite')" onmouseup="stopHold()" ontouchstart="holdCmd('tete_droite')" ontouchend="stopHold()">▶</div>
+          <div class="dp empty"></div>
+          <div class="dp" id="dp-down"  onmousedown="holdCmd('tete_bas')"    onmouseup="stopHold()" ontouchstart="holdCmd('tete_bas')"    ontouchend="stopHold()">▼</div>
+          <div class="dp empty"></div>
+        </div>
+        <div class="speed-row">
+          <span>VITESSE</span>
+          <input type="range" id="speed-slider" min="1" max="5" value="3">
+          <span id="speed-val">3</span>
+        </div>
+      </div>
+
+      <!-- Sliders -->
+      <div class="card" id="slider-card">
+        <div class="card-title">Contrôle précis (degrés)</div>
+        <div class="slider-group">
+          <div class="slider-label">PAN (gauche/droite) <span id="pan-slider-val">90°</span></div>
+          <input type="range" class="servo" id="pan-slider" min="30" max="150" value="90">
+        </div>
+        <div class="slider-group">
+          <div class="slider-label">TILT (haut/bas) <span id="tilt-slider-val">90°</span></div>
+          <input type="range" class="servo" id="tilt-slider" min="50" max="130" value="90">
+        </div>
+      </div>
+
+      <!-- Quick poses -->
+      <div class="card" id="poses-card">
+        <div class="card-title">Poses rapides</div>
+        <div class="pose-grid">
+          <button class="btn" onclick="setAngle(90,90)">CENTRE</button>
+          <button class="btn" onclick="cmd('repos')">REPOS</button>
+          <button class="btn" onclick="setAngle(40,90)">GAUCHE MAX</button>
+          <button class="btn" onclick="setAngle(140,90)">DROITE MAX</button>
+          <button class="btn" onclick="setAngle(90,55)">HAUT MAX</button>
+          <button class="btn" onclick="setAngle(90,125)">BAS MAX</button>
+        </div>
+      </div>
+
+      <!-- KB hint -->
+      <div id="kb-hint">
+        <span class="key">↑</span><span class="key">↓</span><span class="key">←</span><span class="key">→</span>
+        = Tête &nbsp;|&nbsp;
+        <span class="key">Espace</span> = Centre &nbsp;|&nbsp;
+        <span class="key">R</span> = Repos &nbsp;|&nbsp;
+        <span class="key">Entrée</span> = Envoyer message
+      </div>
     </div>
-    <form class="chat-form" id="chat-form">
-      <input type="text" id="chat-input" placeholder="Écris quelque chose à Neo…" autocomplete="off">
-      <button type="submit" id="chat-send">ENVOYER</button>
-    </form>
+  </section>
+
+  <!-- ─── AFFICHAGE LCD ─── -->
+  <section class="section" id="section-affichage">
+    <div class="sec-title">Affichage LCD 16×2</div>
+    <div id="lcd-layout">
+      <div class="card full">
+        <div class="card-title">Aperçu LCD</div>
+        <div class="lcd-screen">
+          <div class="lcd-line" id="lcd-l1">NEO READY       </div>
+          <div class="lcd-line" id="lcd-l2">                </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Envoyer du texte</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <input type="text" id="lcd-text" maxlength="32" placeholder="Texte (max 32 caractères)…">
+          <button class="btn primary" onclick="sendLcd()">AFFICHER SUR LCD</button>
+          <button class="btn" onclick="sendLcd('                ','                ')">EFFACER</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Messages prédéfinis</div>
+        <div class="presets-grid">
+          <button class="btn" onclick="lcdPreset('NEO READY       ','                ')">READY</button>
+          <button class="btn" onclick="lcdPreset('ECOUTE...       ','                ')">ÉCOUTE</button>
+          <button class="btn" onclick="lcdPreset('REFLEXION...    ','                ')">RÉFLEXION</button>
+          <button class="btn" onclick="lcdPreset('BONJOUR !       ','JE SUIS NEO     ')">BONJOUR</button>
+          <button class="btn" onclick="lcdPreset('SYSTEME OK      ','ALL SYSTEMS GO  ')">SYS OK</button>
+          <button class="btn" onclick="lcdPreset('>> NEO V1 <<    ','ROBOT ANIMATRON.')">VERSION</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── DIAGNOSTICS ─── -->
+  <section class="section" id="section-diag">
+    <div class="sec-title">Diagnostics & Tests</div>
+    <div id="diag-layout">
+
+      <div class="card" id="diag-tests">
+        <div class="card-title">Tests composants</div>
+
+        <div class="test-row">
+          <div>
+            <div class="test-name">MQTT Broker</div>
+            <div class="test-desc">Vérifier la connexion au serveur MQTT</div>
+          </div>
+          <span class="test-badge idle" id="badge-mqtt">IDLE</span>
+          <button class="btn" onclick="runTest('mqtt')">TEST</button>
+        </div>
+
+        <div class="test-row">
+          <div>
+            <div class="test-name">OpenClaw IA</div>
+            <div class="test-desc">Ping WebSocket Gateway</div>
+          </div>
+          <span class="test-badge idle" id="badge-openclaw">IDLE</span>
+          <button class="btn" onclick="runTest('openclaw')">TEST</button>
+        </div>
+
+        <div class="test-row">
+          <div>
+            <div class="test-name">Servo PAN</div>
+            <div class="test-desc">Sweep gauche → droite → centre</div>
+          </div>
+          <span class="test-badge idle" id="badge-servo_pan">IDLE</span>
+          <button class="btn" onclick="runTest('servo_pan')">TEST</button>
+        </div>
+
+        <div class="test-row">
+          <div>
+            <div class="test-name">Servo TILT</div>
+            <div class="test-desc">Sweep haut → bas → centre</div>
+          </div>
+          <span class="test-badge idle" id="badge-servo_tilt">IDLE</span>
+          <button class="btn" onclick="runTest('servo_tilt')">TEST</button>
+        </div>
+
+        <div class="test-row">
+          <div>
+            <div class="test-name">Affichage LCD</div>
+            <div class="test-desc">Envoyer un pattern de test</div>
+          </div>
+          <span class="test-badge idle" id="badge-lcd">IDLE</span>
+          <button class="btn" onclick="runTest('lcd')">TEST</button>
+        </div>
+
+        <div class="test-row">
+          <div>
+            <div class="test-name">Buzzer / Speaker</div>
+            <div class="test-desc">Signal audio de test</div>
+          </div>
+          <span class="test-badge idle" id="badge-buzzer">IDLE</span>
+          <button class="btn" onclick="runTest('buzzer')">TEST</button>
+        </div>
+
+        <div class="test-row">
+          <div>
+            <div class="test-name">TEST COMPLET</div>
+            <div class="test-desc">Tous les composants en séquence</div>
+          </div>
+          <span class="test-badge idle" id="badge-full">IDLE</span>
+          <button class="btn danger" onclick="runTest('full')">LANCER</button>
+        </div>
+      </div>
+
+      <div class="card" id="diag-info">
+        <div class="card-title">Informations système</div>
+        <div class="info-row"><span class="ik">VPS IP</span><span class="iv">72.61.111.8</span></div>
+        <div class="info-row"><span class="ik">MQTT Port</span><span class="iv">1883</span></div>
+        <div class="info-row"><span class="ik">OpenClaw WS</span><span class="iv">:18789</span></div>
+        <div class="info-row"><span class="ik">ESP32 Pan</span><span class="iv" id="info-pan">90°</span></div>
+        <div class="info-row"><span class="ik">ESP32 Tilt</span><span class="iv" id="info-tilt">90°</span></div>
+        <div class="info-row"><span class="ik">MQTT Topic CMD</span><span class="iv">neo/commandes</span></div>
+        <div class="info-row"><span class="ik">MQTT Topic Stat</span><span class="iv">neo/status</span></div>
+        <div class="info-row"><span class="ik">Firmware</span><span class="iv">neo_v1.ino</span></div>
+
+        <div style="margin-top:14px">
+          <div class="card-title">Commande MQTT manuelle</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <input type="text" id="raw-cmd" placeholder='{"action":"repos"}'>
+            <button class="btn" onclick="sendRaw()">PUBLIER neo/commandes</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="diag-logs">
+        <div class="card-title">Console de logs</div>
+        <div id="log-console"></div>
+        <div id="log-controls">
+          <span class="lc-label" id="log-count">0 entrées</span>
+          <button class="btn" onclick="socket.emit('get_logs')">RAFRAÎCHIR</button>
+          <button class="btn danger" onclick="socket.emit('clear_logs')">EFFACER</button>
+        </div>
+      </div>
+
+    </div>
   </section>
 
 </main>
+</div>
 
+<!-- ════════════════════════════════════════════════════════
+     JAVASCRIPT
+════════════════════════════════════════════════════════ -->
 <script>
 const socket = io();
 
-// ── Status ──────────────────────────────────────────────────────
-const dot   = document.getElementById('status-dot');
-const label = document.getElementById('status-label');
-
-socket.on('connect',    () => { dot.classList.add('online'); label.textContent = 'Connecté'; });
-socket.on('disconnect', () => { dot.classList.remove('online'); label.textContent = 'Déconnecté'; });
-
-socket.on('mqtt_state', d => {
-  if (d.connected) {
-    dot.classList.add('online');
-    label.textContent = 'MQTT connecté';
-  } else {
-    dot.classList.remove('online');
-    label.textContent = 'MQTT déconnecté';
-  }
-});
-
-socket.on('neo_status', d => {
-  appendMsg('system', `[status] ${JSON.stringify(d)}`);
-});
-
-// ── D-Pad ────────────────────────────────────────────────────────
-const dpadMap = {
-  'btn-haut':   'tete_haut',
-  'btn-bas':    'tete_bas',
-  'btn-gauche': 'tete_gauche',
-  'btn-droite': 'tete_droite',
-  'btn-centre': 'tete_centre',
-  'btn-repos':  'repos',
-};
-Object.entries(dpadMap).forEach(([id, action]) => {
-  document.getElementById(id).addEventListener('click', () => {
-    socket.emit('command', { action });
+// ── Navigation ──────────────────────────────────────────────
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('section-' + btn.dataset.section).classList.add('active');
   });
 });
 
-// ── LCD ──────────────────────────────────────────────────────────
-const lcdInput = document.getElementById('lcd-input');
-const lcdSend  = document.getElementById('lcd-send');
-const lcdL1    = document.getElementById('lcd-l1');
-const lcdL2    = document.getElementById('lcd-l2');
+// ── Connection state ────────────────────────────────────────
+function setConn(id, ok) {
+  const pill = document.getElementById('pill-' + id);
+  const card = document.getElementById('card-' + id);
+  const val  = document.getElementById('card-' + id + '-val');
+  pill.className = 'conn-pill ' + (ok ? 'ok' : 'err');
+  if (card) card.className = 'status-card ' + (ok ? 'ok' : '');
+  if (val)  val.textContent = ok ? 'En ligne' : 'Hors ligne';
+}
 
-lcdSend.addEventListener('click', () => {
-  const texte = lcdInput.value.trim();
-  if (!texte) return;
-  socket.emit('command', { action: 'lcd', texte });
-  // Mirror on screen LCD preview
-  lcdL1.textContent = texte.substring(0, 16).padEnd(16);
-  lcdL2.textContent = texte.substring(16, 32).padEnd(16);
-  lcdInput.value = '';
+socket.on('conn_state', d => {
+  setConn('mqtt',     d.mqtt);
+  setConn('openclaw', d.openclaw);
+  setConn('esp32',    d.esp32);
 });
-lcdInput.addEventListener('keydown', e => { if (e.key === 'Enter') lcdSend.click(); });
 
-// ── Chat ─────────────────────────────────────────────────────────
+// ── Servo state ─────────────────────────────────────────────
+let servoState = { pan: 90, tilt: 90 };
+let sliderMoving = false;
+
+function updateViz(pan, tilt) {
+  // Map pan 30-150 → x 20-160, tilt 50-130 → y 20-160
+  const x = ((pan  - 30)  / 120) * 140 + 20;
+  const y = ((tilt - 50)  / 80)  * 140 + 20;
+  document.getElementById('viz-dot').setAttribute('cx', x);
+  document.getElementById('viz-dot').setAttribute('cy', y);
+  document.getElementById('viz-h').setAttribute('x1', x - 18); document.getElementById('viz-h').setAttribute('x2', x + 18);
+  document.getElementById('viz-h').setAttribute('y1', y);      document.getElementById('viz-h').setAttribute('y2', y);
+  document.getElementById('viz-v').setAttribute('x1', x);      document.getElementById('viz-v').setAttribute('x2', x);
+  document.getElementById('viz-v').setAttribute('y1', y - 18); document.getElementById('viz-v').setAttribute('y2', y + 18);
+  document.getElementById('pan-num').textContent  = pan  + '°';
+  document.getElementById('tilt-num').textContent = tilt + '°';
+  document.getElementById('info-pan').textContent  = pan  + '°';
+  document.getElementById('info-tilt').textContent = tilt + '°';
+  if (!sliderMoving) {
+    document.getElementById('pan-slider').value  = pan;
+    document.getElementById('tilt-slider').value = tilt;
+    document.getElementById('pan-slider-val').textContent  = pan  + '°';
+    document.getElementById('tilt-slider-val').textContent = tilt + '°';
+  }
+}
+
+socket.on('servo_state', d => {
+  servoState = d;
+  updateViz(d.pan, d.tilt);
+});
+
+// Precision sliders
+const panSlider  = document.getElementById('pan-slider');
+const tiltSlider = document.getElementById('tilt-slider');
+
+function onSliderInput() {
+  sliderMoving = true;
+  const pan  = parseInt(panSlider.value);
+  const tilt = parseInt(tiltSlider.value);
+  document.getElementById('pan-slider-val').textContent  = pan  + '°';
+  document.getElementById('tilt-slider-val').textContent = tilt + '°';
+  updateViz(pan, tilt);
+}
+function onSliderChange() {
+  sliderMoving = false;
+  socket.emit('servo_angle', { pan: parseInt(panSlider.value), tilt: parseInt(tiltSlider.value) });
+}
+panSlider.addEventListener('input', onSliderInput);
+panSlider.addEventListener('change', onSliderChange);
+tiltSlider.addEventListener('input', onSliderInput);
+tiltSlider.addEventListener('change', onSliderChange);
+
+// ── Commands ─────────────────────────────────────────────────
+function cmd(action, extra = {}) {
+  socket.emit('command', { action, ...extra });
+}
+function setAngle(pan, tilt) {
+  socket.emit('servo_angle', { pan, tilt });
+}
+
+// Hold (press and hold D-Pad)
+let holdInterval = null;
+let holdSpeed = 3;
+
+document.getElementById('speed-slider').addEventListener('input', function() {
+  holdSpeed = parseInt(this.value);
+  document.getElementById('speed-val').textContent = this.value;
+});
+
+function holdCmd(action) {
+  if (holdInterval) return;
+  const ids = { tete_haut:'dp-up', tete_bas:'dp-down', tete_gauche:'dp-left', tete_droite:'dp-right' };
+  const el = document.getElementById(ids[action]);
+  if (el) el.classList.add('pressed');
+  cmd(action);
+  holdInterval = setInterval(() => cmd(action), Math.max(80, 400 - holdSpeed * 60));
+}
+function stopHold() {
+  clearInterval(holdInterval);
+  holdInterval = null;
+  document.querySelectorAll('.dp').forEach(d => d.classList.remove('pressed'));
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────────
+const keyMap = {
+  'ArrowUp':    'tete_haut',
+  'ArrowDown':  'tete_bas',
+  'ArrowLeft':  'tete_gauche',
+  'ArrowRight': 'tete_droite',
+  ' ':          'tete_centre',
+  'r':          'repos',
+  'R':          'repos',
+};
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (keyMap[e.key]) { e.preventDefault(); holdCmd(keyMap[e.key]); }
+  if (e.key === 'Enter') { document.getElementById('chat-input').focus(); }
+});
+document.addEventListener('keyup', e => {
+  if (keyMap[e.key]) stopHold();
+});
+
+// ── Chat ──────────────────────────────────────────────────────
 const chatLog   = document.getElementById('chat-log');
-const chatForm  = document.getElementById('chat-form');
 const chatInput = document.getElementById('chat-input');
 const chatSend  = document.getElementById('chat-send');
 
 function appendMsg(type, text, sender) {
   const div = document.createElement('div');
-  div.className = `msg ${type}`;
+  div.className = 'msg ' + type;
   if (sender) {
     const s = document.createElement('div');
     s.className = 'sender';
     s.textContent = sender;
     div.appendChild(s);
   }
-  const t = document.createElement('span');
-  t.textContent = text;
-  div.appendChild(t);
+  const content = document.createElement('span');
+  if (type === 'thinking') {
+    content.className = 'thinking-dots';
+    content.innerHTML = '<span></span><span></span><span></span>';
+  } else {
+    content.textContent = text;
+  }
+  div.appendChild(content);
   chatLog.appendChild(div);
   chatLog.scrollTop = chatLog.scrollHeight;
+  return div;
 }
 
+let thinkingEl = null;
 socket.on('chat_thinking', () => {
   chatSend.disabled = true;
-  appendMsg('system', 'Neo réfléchit…');
+  thinkingEl = appendMsg('thinking', '', 'Neo réfléchit');
 });
-
 socket.on('chat_reply', d => {
   chatSend.disabled = false;
-  // Remove "thinking" message
-  const thinking = [...chatLog.querySelectorAll('.msg.system')].at(-1);
-  if (thinking && thinking.textContent.includes('réfléchit')) thinking.remove();
+  if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
   appendMsg('neo', d.text, 'Neo');
 });
 
-chatForm.addEventListener('submit', e => {
-  e.preventDefault();
+function sendChat() {
   const msg = chatInput.value.trim();
   if (!msg || chatSend.disabled) return;
   appendMsg('user', msg, 'Toi');
   socket.emit('chat', { message: msg });
   chatInput.value = '';
+}
+function quickMsg(m) {
+  appendMsg('user', m, 'Toi');
+  socket.emit('chat', { message: m });
+}
+
+chatInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') sendChat();
+});
+
+// ── LCD ───────────────────────────────────────────────────────
+function sendLcd() {
+  const t = document.getElementById('lcd-text').value;
+  socket.emit('command', { action: 'lcd', texte: t });
+  document.getElementById('lcd-l1').textContent = (t.substring(0,16)).padEnd(16);
+  document.getElementById('lcd-l2').textContent = (t.substring(16,32) || '').padEnd(16);
+  document.getElementById('lcd-text').value = '';
+}
+function lcdPreset(l1, l2) {
+  socket.emit('command', { action: 'lcd', texte: l1 + l2 });
+  document.getElementById('lcd-l1').textContent = l1;
+  document.getElementById('lcd-l2').textContent = l2;
+}
+
+// ── Diagnostics ───────────────────────────────────────────────
+function runTest(comp) {
+  const badge = document.getElementById('badge-' + comp);
+  if (badge) { badge.textContent = '…'; badge.className = 'test-badge running'; }
+  socket.emit('test_component', { component: comp });
+}
+socket.on('test_result', d => {
+  const badge = document.getElementById('badge-' + d.component);
+  if (badge) {
+    badge.textContent = d.ok ? 'OK' : 'FAIL';
+    badge.className = 'test-badge ' + (d.ok ? 'ok' : 'fail');
+  }
+  addLog({ t: new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}), l: 'TEST', m: `${d.component}: ${d.msg}` });
+});
+
+function sendRaw() {
+  const val = document.getElementById('raw-cmd').value.trim();
+  if (!val) return;
+  try {
+    const data = JSON.parse(val);
+    socket.emit('command', data);
+    document.getElementById('raw-cmd').value = '';
+  } catch(e) {
+    alert('JSON invalide: ' + e.message);
+  }
+}
+
+// ── Logs ──────────────────────────────────────────────────────
+const logConsole  = document.getElementById('log-console');
+const activityLog = document.getElementById('activity-log');
+let logEntries = [];
+
+function addLog(entry) {
+  logEntries.push(entry);
+  document.getElementById('log-count').textContent = logEntries.length + ' entrées';
+
+  // Console
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="lt">${entry.t}</span><span class="ll ${entry.l}">${entry.l}</span><span class="lm">${entry.m}</span>`;
+  logConsole.appendChild(line);
+  logConsole.scrollTop = logConsole.scrollHeight;
+
+  // Activity (last 10)
+  const item = document.createElement('div');
+  item.className = 'activity-item';
+  item.innerHTML = `<span class="at">${entry.t}</span><span class="al ${entry.l}">${entry.l}</span><span class="am">${entry.m}</span>`;
+  activityLog.insertBefore(item, activityLog.firstChild);
+  while (activityLog.children.length > 10) activityLog.removeChild(activityLog.lastChild);
+}
+
+socket.on('log_entry', addLog);
+socket.on('logs_history', entries => {
+  logConsole.innerHTML = '';
+  logEntries = entries;
+  document.getElementById('log-count').textContent = entries.length + ' entrées';
+  entries.forEach(e => {
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.innerHTML = `<span class="lt">${e.t}</span><span class="ll ${e.l}">${e.l}</span><span class="lm">${e.m}</span>`;
+    logConsole.appendChild(line);
+  });
+  logConsole.scrollTop = logConsole.scrollHeight;
+  // Activity from last 10 logs
+  activityLog.innerHTML = '';
+  entries.slice(-10).reverse().forEach(e => {
+    const item = document.createElement('div');
+    item.className = 'activity-item';
+    item.innerHTML = `<span class="at">${e.t}</span><span class="al ${e.l}">${e.l}</span><span class="am">${e.m}</span>`;
+    activityLog.appendChild(item);
+  });
+});
+
+socket.on('neo_status', d => {
+  if (d.pan !== undefined)  updateViz(d.pan, servoState.tilt);
+  if (d.tilt !== undefined) updateViz(servoState.pan, d.tilt);
 });
 </script>
 </body>

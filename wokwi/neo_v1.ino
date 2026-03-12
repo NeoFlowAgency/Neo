@@ -162,6 +162,17 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     setHead(PAN_CENTER, TILT_CENTER);
     lcdPrint("NEO READY", "");
   }
+  else if (strcmp(action, "servo_direct") == 0) {
+    int pan  = doc["pan"]  | currentPan;
+    int tilt = doc["tilt"] | currentTilt;
+    setHead(pan, tilt);
+  }
+  else if (strcmp(action, "buzzer_test")  == 0) {
+#ifdef WOKWI_SIM
+    beep(523, 120); beep(659, 120); beep(784, 200);
+#endif
+    lcdPrint("BUZZER TEST", "");
+  }
   else if (strcmp(action, "lcd") == 0) {
     const char* texte = doc["texte"] | "";
     char l1[17], l2[17];
