@@ -53,7 +53,7 @@ function AppLayout({ onLogout }) {
           style={{ marginLeft: 8, gap: 6 }}
         >
           <LogOut size={13} />
-          Quitter
+          <span className="btn-label-desktop">Quitter</span>
         </button>
       </header>
 

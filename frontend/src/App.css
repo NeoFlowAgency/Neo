@@ -1094,3 +1094,129 @@ input[type=range].servo-slider::-webkit-slider-thumb:hover {
   animation: spin 0.7s linear infinite;
   display: inline-block;
 }
+
+/* ═══════════════════════════════════════════
+   MOBILE  (≤ 640 px)
+═══════════════════════════════════════════ */
+@media (max-width: 640px) {
+
+  /* ── App shell ─── */
+  .app-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 48px 1fr 58px;
+  }
+
+  /* Move sidebar to bottom nav */
+  .sidebar {
+    grid-row: 3;
+    grid-column: 1;
+    flex-direction: row;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    padding: 0;
+    justify-content: space-around;
+    align-items: stretch;
+  }
+
+  .nav-btn {
+    width: auto;
+    flex: 1;
+    height: 100%;
+    border-radius: 0;
+    gap: 2px;
+  }
+
+  /* Active indicator moves to top */
+  .nav-btn.active::before {
+    top: 0;
+    bottom: auto;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    height: 2px;
+    border-radius: 0 0 2px 2px;
+  }
+
+  /* Content fills row 2 */
+  .content {
+    grid-row: 2;
+    grid-column: 1;
+  }
+
+  /* Topbar: compact */
+  .topbar {
+    padding: 0 12px;
+    gap: 6px;
+  }
+
+  .topbar-logo .logo-sub { display: none; }
+  .conn-pills            { display: none; }
+  .btn-label-desktop     { display: none; }
+
+  /* Pages: less padding */
+  .page { padding: 14px; }
+
+  /* ── Dashboard ─── */
+  .status-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .status-cards .status-card:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .status-card { padding: 12px 14px; }
+  .status-card .sc-icon { width: 36px; height: 36px; }
+
+  .dash-bottom  { grid-template-columns: 1fr; }
+  .quick-actions { grid-template-columns: repeat(2, 1fr); }
+
+  /* ── Body control ─── */
+  .body-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .body-layout .head-viz-card {
+    grid-row: auto;
+    grid-column: 1;
+  }
+
+  /* D-pad: bigger touch targets */
+  .dpad-grid {
+    grid-template-columns: repeat(3, 72px);
+    grid-template-rows: repeat(3, 72px);
+  }
+
+  .dpad-btn { font-size: 1.5rem; }
+
+  .poses-grid { grid-template-columns: repeat(3, 1fr); }
+  .kb-hint    { display: none; }
+
+  /* ── Communication ─── */
+  .chat-layout {
+    height: calc(100vh - 48px - 58px - 90px);
+  }
+
+  .msg { max-width: 90%; }
+
+  .quick-phrases .btn { font-size: 0.68rem; padding: 5px 8px; }
+
+  /* ── LCD ─── */
+  .lcd-layout   { grid-template-columns: 1fr; }
+  .presets-grid { grid-template-columns: repeat(2, 1fr); }
+  .lcd-screen   { font-size: 0.9rem; padding: 14px 16px; }
+
+  /* ── Diagnostics ─── */
+  .diag-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .test-row { gap: 8px; }
+
+  /* ── Grid helpers ─── */
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+
+  /* ── Login ─── */
+  .login-card { width: 92vw; padding: 28px 20px; }
+}
