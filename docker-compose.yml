@@ -74,7 +74,7 @@ services:
     container_name: neo_frontend
     restart: unless-stopped
     ports:
-      - "80:80"    # Application accessible sur http://IP_VPS
+      - "8080:80"    # Application accessible sur http://IP_VPS:8080
     depends_on:
       backend:
         condition: service_healthy
