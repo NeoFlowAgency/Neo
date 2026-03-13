@@ -1,0 +1,10 @@
+# Wokwi Library List — Neo Robot V1
+# Voir https://docs.wokwi.com/guides/libraries
+#
+# Format : Nom@version  (ou juste Nom pour la dernière version)
+# Ces bibliothèques sont aussi celles à installer dans Arduino IDE.
+
+ESP32Servo@0.11.0
+LiquidCrystal_I2C@1.1.4
+Keypad@3.1.1
+RTClib@2.1.1
