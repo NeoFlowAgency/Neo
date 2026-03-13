@@ -170,7 +170,12 @@ Les modules MB102 (3.3V/5V depuis jack barrel ou USB) sont utiles pour :
 - [x] Interface web de contrôle
 - [ ] Firmware ESP32 (MQTT, servos, LCD, micro, ampli)
 - [ ] Schéma électronique complet
-- [ ] Structure 3D de base (torse + cou + tête)
+- [ ] Structure 3D de base (torse + cou + tête) → voir **[neo-3d-design-spec.md](neo-3d-design-spec.md)**
+  - [ ] PIÈCE 1 : BASE (boîtier électronique + S1)
+  - [ ] PIÈCE 2 : BUSTE (torse, tourne sur S1, porte S2)
+  - [ ] PIÈCE 3 : COU (tourne sur S2, porte S3)
+  - [ ] PIÈCE 4 : SUPPORT TÊTE (reçoit S3, porte S4 + palier)
+  - [ ] PIÈCE 5 : CAGE INTERNE TÊTE (adaptateur cage → tête Ultron)
 - [ ] Câblage final
 
 ### V2 — Mobilité
