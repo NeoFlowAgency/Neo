@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NEO — Control Center</title>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 /* ═══════════════════════════════════════════════════════════
    RESET & VARIABLES
@@ -351,77 +354,284 @@ input[type=text]::placeholder { color: var(--text3); }
 /* ═══════════════════════════════════════════════════════════
    SECTION: COMMUNICATION
 ═══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════
+   SECTION: CHAT — style Claude/ChatGPT
+═══════════════════════════════════════════════════════════ */
 #chat-wrapper {
-  display: grid;
-  grid-template-rows: 1fr auto auto;
+  display: flex;
+  flex-direction: column;
   height: calc(100vh - 130px);
-  gap: 12px;
+  gap: 0;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
 }
+
 #chat-log {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px;
+  flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  padding: 24px 0 12px;
+  scroll-behavior: smooth;
 }
-.msg {
-  max-width: 75%;
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 0.83rem;
-  line-height: 1.5;
-  animation: fadeIn 0.2s ease;
-}
-.msg.user {
-  align-self: flex-end;
-  background: #12123a;
-  border: 1px solid #2a2a80;
-  color: #8888ff;
-}
-.msg.neo {
-  align-self: flex-start;
-  background: #1e0808;
-  border: 1px solid var(--red-dim);
-  color: #ff8888;
-}
-.msg.system {
-  align-self: center;
-  background: transparent;
-  border: none;
-  color: var(--text3);
-  font-size: 0.68rem;
-  font-style: italic;
-}
-.msg .sender {
-  font-size: 0.6rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  opacity: 0.6;
-  margin-bottom: 4px;
-}
-.msg.neo .sender { color: var(--red); }
-.msg.user .sender { color: #6666ff; }
+#chat-log::-webkit-scrollbar { width: 4px; }
+#chat-log::-webkit-scrollbar-track { background: transparent; }
+#chat-log::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
+/* Empty state */
+#chat-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text2);
+  padding: 40px;
+  text-align: center;
+}
+#chat-empty .empty-icon {
+  width: 56px; height: 56px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.6rem;
+}
+#chat-empty h3 { font-size: 1rem; font-weight: 600; color: var(--text); margin: 0; }
+#chat-empty p  { font-size: 0.78rem; color: var(--text2); margin: 0; max-width: 280px; line-height: 1.6; }
+
+/* Message row */
+.msg-row {
+  display: flex;
+  gap: 12px;
+  padding: 6px 20px;
+  position: relative;
+  animation: fadeIn 0.18s ease;
+}
+.msg-row:hover { background: rgba(255,255,255,0.02); }
+.msg-row:hover .msg-copy { opacity: 1; }
+.msg-row.user { flex-direction: row-reverse; }
+
+/* Avatar */
+.msg-avatar {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.msg-row.neo  .msg-avatar { background: #2a0808; border: 1px solid var(--red-dim); color: var(--red); }
+.msg-row.user .msg-avatar { background: #0e0e2e; border: 1px solid #2a2a70; color: #7777ee; }
+
+/* Bubble */
+.msg-bubble {
+  flex: 1;
+  max-width: 78%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.msg-row.user .msg-bubble { align-items: flex-end; }
+
+.msg-sender {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text3);
+  padding: 0 4px;
+}
+.msg-row.neo  .msg-sender { color: var(--red); opacity: 0.7; }
+.msg-row.user .msg-sender { color: #5555bb; opacity: 0.7; }
+
+.msg-content {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  padding: 10px 14px;
+  border-radius: 12px;
+  word-break: break-word;
+  position: relative;
+}
+.msg-row.neo .msg-content {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-top-left-radius: 4px;
+}
+.msg-row.user .msg-content {
+  background: #141435;
+  border: 1px solid #26267a;
+  color: #c0c0f0;
+  border-top-right-radius: 4px;
+}
+
+/* Markdown inside bubbles */
+.msg-content p  { margin: 0 0 8px; }
+.msg-content p:last-child { margin-bottom: 0; }
+.msg-content ul, .msg-content ol { padding-left: 18px; margin: 6px 0; }
+.msg-content li { margin: 2px 0; }
+.msg-content code {
+  background: rgba(0,0,0,0.35);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.8em;
+  color: var(--cyan);
+}
+.msg-content pre {
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.msg-content pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.82em;
+  color: var(--text);
+}
+.msg-content strong { color: #fff; font-weight: 600; }
+.msg-content em     { color: var(--text2); }
+.msg-content a      { color: var(--cyan); }
+.msg-content h1, .msg-content h2, .msg-content h3 {
+  font-size: 0.9rem; font-weight: 700; margin: 10px 0 4px;
+}
+
+/* Copy button */
+.msg-copy {
+  position: absolute;
+  top: 6px; right: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text2);
+  font-size: 0.7rem;
+  padding: 3px 7px;
+  cursor: pointer;
+  font-family: var(--font);
+}
+.msg-copy:hover { color: var(--text); border-color: var(--border2); }
+
+/* System message */
+.msg-system {
+  text-align: center;
+  color: var(--text3);
+  font-size: 0.7rem;
+  font-style: italic;
+  padding: 4px 0;
+  font-family: var(--font);
+}
+
+/* Thinking / streaming cursor */
 .thinking-dots span {
   display: inline-block;
-  width: 6px; height: 16px;
+  width: 5px; height: 14px;
   background: var(--red);
   border-radius: 3px;
   margin: 0 2px;
   animation: dot-wave 0.9s ease-in-out infinite;
+  vertical-align: middle;
 }
 .thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
 .thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
 
-#quick-phrases {
-  display: flex; gap: 8px; flex-wrap: wrap;
+.stream-cursor {
+  display: inline-block;
+  width: 2px; height: 1em;
+  background: var(--red);
+  border-radius: 1px;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink-cursor 0.8s step-end infinite;
 }
+@keyframes blink-cursor { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
 
-#chat-input-row { display: flex; gap: 8px; }
-#chat-input-row input { flex: 1; }
+/* Quick phrases */
+#quick-phrases {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 20px 4px;
+}
+#quick-phrases .btn {
+  font-size: 0.73rem;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border-color: var(--border2);
+  color: var(--text2);
+}
+#quick-phrases .btn:hover { border-color: var(--red); color: var(--text); }
+
+/* Input area */
+#chat-input-area {
+  padding: 10px 20px 14px;
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+}
+#chat-input-box {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  padding: 8px 8px 8px 16px;
+  transition: border-color 0.2s;
+}
+#chat-input-box:focus-within { border-color: var(--red); }
+
+#chat-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  resize: none;
+  max-height: 160px;
+  min-height: 24px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+#chat-input::placeholder { color: var(--text3); }
+
+#chat-send-btn, #chat-stop-btn {
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  border: none;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+  font-size: 1rem;
+}
+#chat-send-btn {
+  background: var(--red);
+  color: #fff;
+}
+#chat-send-btn:hover  { background: var(--red2); }
+#chat-send-btn:disabled { background: var(--surface); color: var(--text3); cursor: default; }
+#chat-stop-btn {
+  background: #3a1010;
+  border: 1px solid var(--red-dim);
+  color: var(--red);
+  display: none;
+}
+#chat-stop-btn:hover { background: #501818; }
+
+.input-hint {
+  font-size: 0.65rem;
+  color: var(--text3);
+  text-align: right;
+  padding: 4px 4px 0;
+  font-family: var(--font);
+}
 
 /* ═══════════════════════════════════════════════════════════
    SECTION: CORPS (BODY)
@@ -732,18 +942,26 @@ input[type=range].servo {
     <div class="sec-title">Communication avec Neo</div>
     <div id="chat-wrapper">
       <div id="chat-log">
-        <div class="msg system">Connecté à OpenClaw — parle à Neo.</div>
+        <div id="chat-empty">
+          <div class="empty-icon">🤖</div>
+          <h3>Comment puis-je vous aider ?</h3>
+          <p>Je suis Neo, votre assistant robotique. Posez-moi une question ou utilisez les suggestions ci-dessous.</p>
+        </div>
       </div>
       <div id="quick-phrases">
-        <button class="btn" onclick="quickMsg('Bonjour Neo !')">Bonjour</button>
+        <button class="btn" onclick="quickMsg('Bonjour Neo !')">👋 Bonjour</button>
         <button class="btn" onclick="quickMsg('Comment tu vas ?')">Comment ça va ?</button>
-        <button class="btn" onclick="quickMsg('Quel est ton nom ?')">Qui es-tu ?</button>
-        <button class="btn" onclick="quickMsg('Dis-moi une blague')">Blague</button>
+        <button class="btn" onclick="quickMsg('Qui es-tu ?')">Qui es-tu ?</button>
+        <button class="btn" onclick="quickMsg('Dis-moi une blague')">😄 Blague</button>
         <button class="btn" onclick="quickMsg('Présente-toi')">Présentation</button>
       </div>
-      <div id="chat-input-row">
-        <input type="text" id="chat-input" placeholder="Écris quelque chose à Neo…" autocomplete="off">
-        <button class="btn primary" id="chat-send" onclick="sendChat()">ENVOYER</button>
+      <div id="chat-input-area">
+        <div id="chat-input-box">
+          <textarea id="chat-input" rows="1" placeholder="Écris à Neo… (Entrée pour envoyer, Maj+Entrée pour saut de ligne)" autocomplete="off"></textarea>
+          <button id="chat-stop-btn" title="Arrêter" onclick="stopChat()">⏹</button>
+          <button id="chat-send-btn" title="Envoyer" onclick="sendChat()">↑</button>
+        </div>
+        <div class="input-hint">Entrée = envoyer &nbsp;·&nbsp; Maj+Entrée = nouvelle ligne</div>
       </div>
     </div>
   </section>
@@ -1113,57 +1331,184 @@ document.addEventListener('keyup', e => {
 });
 
 // ── Chat ──────────────────────────────────────────────────────
-const chatLog   = document.getElementById('chat-log');
-const chatInput = document.getElementById('chat-input');
-const chatSend  = document.getElementById('chat-send');
+const chatLog    = document.getElementById('chat-log');
+const chatEmpty  = document.getElementById('chat-empty');
+const chatInput  = document.getElementById('chat-input');
+const chatSendBtn = document.getElementById('chat-send-btn');
+const chatStopBtn = document.getElementById('chat-stop-btn');
 
-function appendMsg(type, text, sender) {
-  const div = document.createElement('div');
-  div.className = 'msg ' + type;
-  if (sender) {
-    const s = document.createElement('div');
-    s.className = 'sender';
-    s.textContent = sender;
-    div.appendChild(s);
-  }
-  const content = document.createElement('span');
-  if (type === 'thinking') {
-    content.className = 'thinking-dots';
-    content.innerHTML = '<span></span><span></span><span></span>';
-  } else {
-    content.textContent = text;
-  }
-  div.appendChild(content);
-  chatLog.appendChild(div);
-  chatLog.scrollTop = chatLog.scrollHeight;
-  return div;
+// Configure marked
+if (typeof marked !== 'undefined') {
+  marked.setOptions({ breaks: true, gfm: true });
 }
 
-let thinkingEl = null;
+let _isStreaming   = false;
+let _streamEl      = null;   // .msg-content div being streamed
+let _streamText    = '';     // accumulated raw text
+let _thinkingRow   = null;
+let _stopRequested = false;
+
+function renderMd(text) {
+  if (typeof marked === 'undefined') return escHtml(text).replace(/\n/g, '<br>');
+  try { return marked.parse(text); } catch(e) { return escHtml(text); }
+}
+function escHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function hideEmpty() {
+  if (chatEmpty) chatEmpty.style.display = 'none';
+}
+
+function appendSystem(text) {
+  hideEmpty();
+  const d = document.createElement('div');
+  d.className = 'msg-system';
+  d.textContent = text;
+  chatLog.appendChild(d);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function appendRow(who, htmlContent, raw) {
+  hideEmpty();
+  const isUser = (who === 'user');
+  const row = document.createElement('div');
+  row.className = 'msg-row ' + who;
+
+  const avatar = document.createElement('div');
+  avatar.className = 'msg-avatar';
+  avatar.textContent = isUser ? 'T' : 'N';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+
+  const sender = document.createElement('div');
+  sender.className = 'msg-sender';
+  sender.textContent = isUser ? 'Toi' : 'Neo';
+
+  const content = document.createElement('div');
+  content.className = 'msg-content';
+  content.innerHTML = htmlContent;
+
+  // Copy button
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'msg-copy';
+  copyBtn.textContent = 'Copier';
+  copyBtn.onclick = () => {
+    navigator.clipboard.writeText(raw || content.innerText).then(() => {
+      copyBtn.textContent = '✓ Copié';
+      setTimeout(() => { copyBtn.textContent = 'Copier'; }, 1500);
+    });
+  };
+
+  bubble.appendChild(sender);
+  bubble.appendChild(content);
+  row.appendChild(avatar);
+  row.appendChild(bubble);
+  row.appendChild(copyBtn);
+  chatLog.appendChild(row);
+  chatLog.scrollTop = chatLog.scrollHeight;
+  return { row, content };
+}
+
+function setStreaming(on) {
+  _isStreaming = on;
+  chatSendBtn.disabled = on;
+  chatStopBtn.style.display = on ? 'flex' : 'none';
+  chatInput.disabled = on;
+}
+
+function stopChat() {
+  _stopRequested = true;
+  // Finalize whatever was streamed
+  if (_streamEl && _streamText) {
+    _streamEl.innerHTML = renderMd(_streamText);
+  }
+  if (_thinkingRow) { _thinkingRow.remove(); _thinkingRow = null; }
+  setStreaming(false);
+  _streamEl = null; _streamText = '';
+}
+
 socket.on('chat_thinking', () => {
-  chatSend.disabled = true;
-  thinkingEl = appendMsg('thinking', '', 'Neo réfléchit');
+  _stopRequested = false;
+  setStreaming(true);
+  // Show thinking dots
+  const row = document.createElement('div');
+  row.className = 'msg-row neo';
+  row.innerHTML = `
+    <div class="msg-avatar">N</div>
+    <div class="msg-bubble">
+      <div class="msg-sender">Neo</div>
+      <div class="msg-content" style="min-width:60px">
+        <span class="thinking-dots"><span></span><span></span><span></span></span>
+      </div>
+    </div>`;
+  hideEmpty();
+  chatLog.appendChild(row);
+  chatLog.scrollTop = chatLog.scrollHeight;
+  _thinkingRow = row;
+  _streamEl = null;
+  _streamText = '';
 });
+
+socket.on('chat_token', d => {
+  if (_stopRequested) return;
+  const token = d.token || '';
+  // On first token: replace thinking row with real row
+  if (_thinkingRow) {
+    _thinkingRow.remove();
+    _thinkingRow = null;
+    const { content } = appendRow('neo', '', '');
+    _streamEl = content;
+  }
+  if (!_streamEl) return;
+  _streamText += token;
+  // Render incrementally — cursor at end
+  _streamEl.innerHTML = renderMd(_streamText) + '<span class="stream-cursor"></span>';
+  chatLog.scrollTop = chatLog.scrollHeight;
+});
+
 socket.on('chat_reply', d => {
-  chatSend.disabled = false;
-  if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
-  appendMsg('neo', d.text, 'Neo');
+  if (_stopRequested) { setStreaming(false); return; }
+  // If streaming was used, finalize
+  if (_streamEl) {
+    _streamEl.innerHTML = renderMd(_streamText || d.text || '');
+    _streamEl = null;
+    _streamText = '';
+  } else {
+    // Non-streaming fallback (thinking dots still showing)
+    if (_thinkingRow) { _thinkingRow.remove(); _thinkingRow = null; }
+    appendRow('neo', renderMd(d.text || ''), d.text || '');
+  }
+  setStreaming(false);
 });
 
 function sendChat() {
   const msg = chatInput.value.trim();
-  if (!msg || chatSend.disabled) return;
-  appendMsg('user', msg, 'Toi');
+  if (!msg || _isStreaming) return;
+  appendRow('user', escHtml(msg).replace(/\n/g,'<br>'), msg);
   socket.emit('chat', { message: msg });
   chatInput.value = '';
+  autoResize();
 }
 function quickMsg(m) {
-  appendMsg('user', m, 'Toi');
+  if (_isStreaming) return;
+  appendRow('user', escHtml(m), m);
   socket.emit('chat', { message: m });
 }
 
+// Auto-resize textarea
+function autoResize() {
+  chatInput.style.height = 'auto';
+  chatInput.style.height = Math.min(chatInput.scrollHeight, 160) + 'px';
+}
+chatInput.addEventListener('input', autoResize);
+
 chatInput.addEventListener('keydown', e => {
-  if (e.key === 'Enter') sendChat();
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChat();
+  }
 });
 
 // ── LCD ───────────────────────────────────────────────────────
