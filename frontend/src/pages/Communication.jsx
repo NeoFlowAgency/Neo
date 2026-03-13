@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Fragment } from 'react'
 import { useNeo } from '../context/NeoContext'
 import { MessageCircle, Send, Trash2 } from 'lucide-react'
 
@@ -81,7 +81,7 @@ export default function Communication() {
             const prevDateStr = i > 0 && chatMessages[i - 1].time ? new Date(chatMessages[i - 1].time).toDateString() : null
             const showSeparator = msgDateStr && msgDateStr !== prevDateStr
             return (
-              <div key={i}>
+              <Fragment key={i}>
                 {showSeparator && (
                   <div className="msg-date-separator">{formatDateSeparator(msg.time)}</div>
                 )}
@@ -90,7 +90,7 @@ export default function Communication() {
                   <div>{msg.text}</div>
                   <div className="msg-time">{formatTime(msg.time)}</div>
                 </div>
-              </div>
+              </Fragment>
             )
           })}
 

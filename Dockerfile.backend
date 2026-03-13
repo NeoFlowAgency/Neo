@@ -33,7 +33,7 @@ COPY neo_bridge.py .
 COPY templates/ ./templates/
 
 # ── Propriété des fichiers → utilisateur non-root ────────────
-RUN chown -R neo:neo /app
+RUN mkdir -p /app/data && chown -R neo:neo /app
 
 USER neo
 

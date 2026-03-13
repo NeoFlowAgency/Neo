@@ -42,8 +42,8 @@ def _save_chat():
         os.makedirs(os.path.dirname(CHAT_FILE), exist_ok=True)
         with open(CHAT_FILE, "w", encoding="utf-8") as f:
             json.dump(list(chat_history), f, ensure_ascii=False)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[WARN] _save_chat failed: {e}", flush=True)
 
 # ── State ──────────────────────────────────────────────────────
 mqtt_connected  = False
