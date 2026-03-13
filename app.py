@@ -22,16 +22,35 @@ OPENCLAW_AGENT = os.environ.get("OPENCLAW_AGENT", "main")
 TOPIC_CMD    = "neo/commandes"
 TOPIC_STATUS = "neo/status"
 
+CHAT_FILE = os.path.join(os.path.dirname(__file__), "data", "chat_history.json")
+
 app = Flask(__name__, static_folder="static", static_url_path="")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "neo-secret-change-me-in-prod")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+
+# ── Chat persistence ───────────────────────────────────────────
+def _load_chat():
+    try:
+        os.makedirs(os.path.dirname(CHAT_FILE), exist_ok=True)
+        with open(CHAT_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+def _save_chat():
+    try:
+        os.makedirs(os.path.dirname(CHAT_FILE), exist_ok=True)
+        with open(CHAT_FILE, "w", encoding="utf-8") as f:
+            json.dump(list(chat_history), f, ensure_ascii=False)
+    except Exception:
+        pass
 
 # ── State ──────────────────────────────────────────────────────
 mqtt_connected  = False
 esp32_last_seen = 0
 servo_state     = {"pan": 90, "tilt": 90}
 logs            = deque(maxlen=400)
-chat_history    = deque(maxlen=20)
+chat_history    = deque(_load_chat(), maxlen=500)
 
 # ── OpenClaw status cache ──────────────────────────────────────
 _openclaw_alive      = False
@@ -189,6 +208,20 @@ def api_logout():
 def api_me():
     return jsonify({"authenticated": bool(session.get("auth"))})
 
+@app.route("/api/chat/history")
+def api_chat_history():
+    if not session.get("auth"):
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify(list(chat_history))
+
+@app.route("/api/chat/clear", methods=["POST"])
+def api_chat_clear():
+    if not session.get("auth"):
+        return jsonify({"error": "unauthorized"}), 401
+    chat_history.clear()
+    _save_chat()
+    return jsonify({"ok": True})
+
 @app.route("/api/status")
 def api_status():
     return jsonify({
@@ -202,9 +235,10 @@ def api_status():
 def on_connect():
     if not session.get("auth"):
         return False
-    emit("conn_state",   get_conn_state())
-    emit("servo_state",  servo_state)
-    emit("logs_history", list(logs)[-60:])
+    emit("conn_state",      get_conn_state())
+    emit("servo_state",     servo_state)
+    emit("logs_history",    list(logs)[-60:])
+    emit("chat_history_init", list(chat_history))
 
 @socketio.on("command")
 def on_command(data):
@@ -246,6 +280,7 @@ def on_chat(data):
 
     log("CHAT", f"Tu → {message}")
     chat_history.append({"role": "user", "text": message, "t": time.time()})
+    _save_chat()
 
     # Construire le contexte pour OpenClaw (10 derniers tours)
     messages = []
@@ -271,6 +306,7 @@ def on_chat(data):
 
         if full:
             chat_history.append({"role": "neo", "text": full, "t": time.time()})
+            _save_chat()
             socketio.emit("chat_reply", {"text": full})
             send_command("lcd",  texte=f"Neo: {full[:28]}")
             send_command("dire", texte=full[:200])

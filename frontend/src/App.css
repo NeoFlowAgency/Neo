@@ -600,6 +600,18 @@ html, body, #root {
   text-align: right;
 }
 
+.msg-date-separator {
+  align-self: center;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 2px 12px;
+  margin: 4px 0;
+  text-transform: capitalize;
+}
+
 .thinking-indicator {
   display: flex;
   align-items: center;

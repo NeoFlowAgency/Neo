@@ -58,6 +58,8 @@ services:
       OPENCLAW_TOKEN: "48456fb15f32065747b6d2c540179d1dac3c67773521c6d3ebbe70268d63e8fa"
       OPENCLAW_AGENT: "main"
 
+    volumes:
+      - neo_data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"   # accès au host depuis le container
     networks:
@@ -116,7 +118,8 @@ networks:
   neo_net:
     driver: bridge
 
-# ── Volumes persistants (décommenter si MQTT local activé) ──────
-# volumes:
+# ── Volumes persistants ──────────────────────────────────────────
+volumes:
+  neo_data:   # historique du chat, données persistantes backend
 #   mosquitto_data:
 #   mosquitto_log:

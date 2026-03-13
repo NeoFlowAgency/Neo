@@ -36,7 +36,23 @@ export default function Communication() {
 
   const formatTime = (date) => {
     if (!date) return ''
-    return new Date(date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    const d = new Date(date)
+    const today = new Date()
+    if (d.toDateString() === today.toDateString()) {
+      return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    }
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+  }
+
+  const formatDateSeparator = (date) => {
+    if (!date) return ''
+    const d = new Date(date)
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(today.getDate() - 1)
+    if (d.toDateString() === today.toDateString()) return "Aujourd'hui"
+    if (d.toDateString() === yesterday.toDateString()) return 'Hier'
+    return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   }
 
   return (
@@ -60,13 +76,23 @@ export default function Communication() {
             <div className="msg msg-system">Envoie un message pour commencer la conversation avec Neo.</div>
           )}
 
-          {chatMessages.map((msg, i) => (
-            <div key={i} className={`msg msg-${msg.type}${msg.error ? ' msg-error' : ''}`}>
-              <div className="msg-sender">{msg.type === 'user' ? 'Toi' : 'Neo'}</div>
-              <div>{msg.text}</div>
-              <div className="msg-time">{formatTime(msg.time)}</div>
-            </div>
-          ))}
+          {chatMessages.map((msg, i) => {
+            const msgDateStr = msg.time ? new Date(msg.time).toDateString() : null
+            const prevDateStr = i > 0 && chatMessages[i - 1].time ? new Date(chatMessages[i - 1].time).toDateString() : null
+            const showSeparator = msgDateStr && msgDateStr !== prevDateStr
+            return (
+              <div key={i}>
+                {showSeparator && (
+                  <div className="msg-date-separator">{formatDateSeparator(msg.time)}</div>
+                )}
+                <div className={`msg msg-${msg.type}${msg.error ? ' msg-error' : ''}`}>
+                  <div className="msg-sender">{msg.type === 'user' ? 'Toi' : 'Neo'}</div>
+                  <div>{msg.text}</div>
+                  <div className="msg-time">{formatTime(msg.time)}</div>
+                </div>
+              </div>
+            )
+          })}
 
           {chatThinking && (
             <div className="thinking-indicator">

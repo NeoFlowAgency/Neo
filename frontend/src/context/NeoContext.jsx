@@ -34,6 +34,14 @@ export function NeoProvider({ children }) {
       setLogs([...entries])
     })
 
+    socket.on('chat_history_init', (history) => {
+      setChatMessages(history.map(m => ({
+        type: m.role === 'neo' ? 'neo' : 'user',
+        text: m.text,
+        time: new Date(m.t * 1000),
+      })))
+    })
+
     socket.on('chat_thinking', () => {
       setChatThinking(true)
       streamingRef.current = null
@@ -108,6 +116,7 @@ export function NeoProvider({ children }) {
       socket.off('chat_reply')
       socket.off('test_result')
       socket.off('neo_status')
+      socket.off('chat_history_init')
       socket.disconnect()
     }
   }, [])
@@ -140,6 +149,7 @@ export function NeoProvider({ children }) {
     clearTimeout(chatTimeoutRef.current)
     setChatMessages([])
     setChatThinking(false)
+    fetch('/api/chat/clear', { method: 'POST' })
   }, [])
 
   const value = {
