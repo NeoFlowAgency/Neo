@@ -80,8 +80,8 @@
 | 33 | D33 | Keypad Col 1 | Keypad 4×4 | OUTPUT |
 | 34 | D34 | Keypad Row 3 | Keypad 4×4 | INPUT seul — 10kΩ pullup externe |
 | 35 | D35 | Keypad Row 4 | Keypad 4×4 | INPUT seul — 10kΩ pullup externe |
-| 36 | VN  | Switch | Interrupteur | INPUT seul — 10kΩ pullup externe |
-| 39 | VP  | Potentiomètre | Volume/réglage | ADC INPUT |
+| 36 | VP  | Switch | Interrupteur | INPUT seul — 10kΩ pullup externe |
+| 39 | VN  | Potentiomètre | Volume/réglage | ADC INPUT |
 
 > **Note LCD :** Le LCD 16x2 doit avoir un module I2C (PCF8574) soudé derrière. À commander si absent (~1€). Adresse par défaut : `0x27`.
 

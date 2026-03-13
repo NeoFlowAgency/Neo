@@ -35,8 +35,8 @@
 | 33   | D33 | Keypad Col 1 | Keypad 4×4 | OUTPUT | |
 | 34   | D34 | Keypad Row 3 | Keypad 4×4 | INPUT seul | ⚠ Ajouter 10kΩ pullup → 3.3V |
 | 35   | D35 | Keypad Row 4 | Keypad 4×4 | INPUT seul | ⚠ Ajouter 10kΩ pullup → 3.3V |
-| 36   | VN  | Switch (interrupteur) | Switch | INPUT seul | ⚠ Ajouter 10kΩ pullup → 3.3V |
-| 39   | VP  | Potentiomètre | Potentiomètre | ADC INPUT | Entrée analogique |
+| 36   | VP  | Switch (interrupteur) | Switch | INPUT seul | ⚠ Ajouter 10kΩ pullup → 3.3V |
+| 39   | VN  | Potentiomètre | Potentiomètre | ADC INPUT | Entrée analogique |
 
 ---
 
@@ -179,7 +179,7 @@ Keypad :    C1    C2    C3    C4
 
 | Connexion | Détail |
 |-----------|--------|
-| Pin 1 | GPIO 36 (VN) |
+| Pin 1 | GPIO 36 (VP) |
 | Pin 2 | GND |
 | Pullup | **Externe 10kΩ entre GPIO 36 et 3.3V** |
 
@@ -194,7 +194,7 @@ Quand l'interrupteur est fermé → GPIO 36 lit LOW (connecté à GND)
 |-------------------|-----------|
 | Gauche (VCC) | 3.3V |
 | Droite (GND) | GND |
-| Centre (signal) | GPIO 39 (VP) |
+| Centre (signal) | GPIO 39 (VN) |
 
 Valeur recommandée : 10kΩ
 

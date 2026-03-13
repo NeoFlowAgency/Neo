@@ -6,96 +6,55 @@
     {
       "type": "wokwi-esp32-devkit-v1",
       "id": "esp",
-      "top": 240,
-      "left": 380,
+      "top": 200,
+      "left": 340,
       "attrs": {}
     },
 
-    { "type": "wokwi-servo", "id": "s1", "top": 0,   "left": 870, "attrs": { "label": "S1-Torse" } },
-    { "type": "wokwi-servo", "id": "s2", "top": 80,  "left": 870, "attrs": { "label": "S2-Cou" } },
-    { "type": "wokwi-servo", "id": "s3", "top": 160, "left": 870, "attrs": { "label": "S3-Roll" } },
-    { "type": "wokwi-servo", "id": "s4", "top": 240, "left": 870, "attrs": { "label": "S4-Pitch" } },
-    { "type": "wokwi-servo", "id": "s5", "top": 320, "left": 870, "attrs": { "label": "S5-Bouche" } },
+    { "type": "wokwi-servo", "id": "s1", "top": 0,   "left": 800, "attrs": { "label": "S1-Torse"  } },
+    { "type": "wokwi-servo", "id": "s2", "top": 100, "left": 800, "attrs": { "label": "S2-Cou"    } },
+    { "type": "wokwi-servo", "id": "s3", "top": 200, "left": 800, "attrs": { "label": "S3-Roll"   } },
+    { "type": "wokwi-servo", "id": "s4", "top": 300, "left": 800, "attrs": { "label": "S4-Pitch"  } },
+    { "type": "wokwi-servo", "id": "s5", "top": 400, "left": 800, "attrs": { "label": "S5-Bouche" } },
 
     {
       "type": "wokwi-lcd1602",
       "id": "lcd",
       "top": 0,
-      "left": 380,
+      "left": 200,
       "attrs": { "pins": "i2c", "i2cAddress": "0x27" }
     },
 
     {
       "type": "wokwi-ds1307",
       "id": "rtc",
-      "top": 0,
-      "left": 600,
+      "top": 50,
+      "left": 570,
       "attrs": {}
     },
 
     {
       "type": "wokwi-membrane-keypad",
       "id": "keypad",
-      "top": 780,
-      "left": 200,
+      "top": 750,
+      "left": 160,
       "attrs": { "size": "4x4" }
     },
 
-    {
-      "type": "wokwi-buzzer",
-      "id": "buzzer",
-      "top": 450,
-      "left": 180,
-      "attrs": {}
-    },
-
-    {
-      "type": "wokwi-slide-switch",
-      "id": "sw",
-      "top": 560,
-      "left": 180,
-      "attrs": {}
-    },
-
+    { "type": "wokwi-buzzer",       "id": "buzzer", "top": 390, "left": 60, "attrs": {} },
+    { "type": "wokwi-pushbutton",   "id": "sw",     "top": 500, "left": 60, "attrs": {} },
     {
       "type": "wokwi-potentiometer",
       "id": "pot",
-      "top": 640,
-      "left": 180,
+      "top": 590,
+      "left": 60,
       "attrs": { "value": "10000" }
     },
 
-    {
-      "type": "wokwi-resistor",
-      "id": "r_buzz",
-      "top": 452,
-      "left": 330,
-      "attrs": { "value": "100" }
-    },
-
-    {
-      "type": "wokwi-resistor",
-      "id": "r_r3",
-      "top": 780,
-      "left": 490,
-      "attrs": { "value": "10000" }
-    },
-
-    {
-      "type": "wokwi-resistor",
-      "id": "r_r4",
-      "top": 830,
-      "left": 490,
-      "attrs": { "value": "10000" }
-    },
-
-    {
-      "type": "wokwi-resistor",
-      "id": "r_sw",
-      "top": 560,
-      "left": 330,
-      "attrs": { "value": "10000" }
-    }
+    { "type": "wokwi-resistor", "id": "rbuzz", "top": 392, "left": 190, "attrs": { "value": "100",   "rotate": "90" } },
+    { "type": "wokwi-resistor", "id": "r34",   "top": 750, "left": 530, "attrs": { "value": "10000", "rotate": "90" } },
+    { "type": "wokwi-resistor", "id": "r35",   "top": 800, "left": 530, "attrs": { "value": "10000", "rotate": "90" } },
+    { "type": "wokwi-resistor", "id": "rsw",   "top": 502, "left": 190, "attrs": { "value": "10000", "rotate": "90" } }
   ],
 
   "connections": [
@@ -106,48 +65,54 @@
     ["esp:D23", "s4:PWM", "orange", []],
     ["esp:D27", "s5:PWM", "orange", []],
 
-    ["esp:GND.1", "s1:GND", "black", []],
-    ["esp:GND.1", "s2:GND", "black", []],
-    ["esp:GND.1", "s3:GND", "black", []],
-    ["esp:GND.1", "s4:GND", "black", []],
-    ["esp:GND.1", "s5:GND", "black", []],
+    ["esp:VIN",   "s1:V+",  "red",   []],
+    ["esp:VIN",   "s2:V+",  "red",   []],
+    ["esp:VIN",   "s3:V+",  "red",   []],
+    ["esp:VIN",   "s4:V+",  "red",   []],
+    ["esp:VIN",   "s5:V+",  "red",   []],
+
+    ["esp:GND.2", "s1:GND", "black", []],
+    ["esp:GND.2", "s2:GND", "black", []],
+    ["esp:GND.2", "s3:GND", "black", []],
+    ["esp:GND.2", "s4:GND", "black", []],
+    ["esp:GND.2", "s5:GND", "black", []],
 
     ["esp:D4",  "lcd:SDA", "blue",   []],
     ["esp:D5",  "lcd:SCL", "yellow", []],
     ["esp:3V3", "lcd:VCC", "red",    []],
     ["esp:GND.1","lcd:GND","black",  []],
 
-    ["esp:D4",   "rtc:SDA", "blue",   []],
-    ["esp:D5",   "rtc:SCL", "yellow", []],
-    ["esp:3V3",  "rtc:VCC", "red",    []],
-    ["esp:GND.2","rtc:GND", "black",  []],
+    ["esp:D4",  "rtc:SDA", "blue",   []],
+    ["esp:D5",  "rtc:SCL", "yellow", []],
+    ["esp:3V3", "rtc:VCC", "red",    []],
+    ["esp:GND.1","rtc:GND","black",  []],
 
-    ["esp:D33", "keypad:C1", "green", []],
-    ["esp:D12", "keypad:C2", "green", []],
-    ["esp:D2",  "keypad:C3", "green", []],
-    ["esp:D0",  "keypad:C4", "green", []],
+    ["esp:D33", "keypad:C1", "green",  []],
+    ["esp:D12", "keypad:C2", "green",  []],
+    ["esp:D2",  "keypad:C3", "green",  []],
+    ["esp:D0",  "keypad:C4", "green",  []],
 
-    ["esp:RX2", "keypad:R1", "purple", []],
-    ["esp:TX2", "keypad:R2", "purple", []],
+    ["esp:D16", "keypad:R1", "purple", []],
+    ["esp:D17", "keypad:R2", "purple", []],
     ["esp:D34", "keypad:R3", "purple", []],
     ["esp:D35", "keypad:R4", "purple", []],
 
-    ["esp:D34", "r_r3:1", "purple", []],
-    ["esp:3V3",  "r_r3:2", "red",   []],
-    ["esp:D35", "r_r4:1", "purple", []],
-    ["esp:3V3",  "r_r4:2", "red",   []],
+    ["esp:D34", "r34:1",  "purple", []],
+    ["esp:3V3", "r34:2",  "red",    []],
+    ["esp:D35", "r35:1",  "purple", []],
+    ["esp:3V3", "r35:2",  "red",    []],
 
-    ["esp:D13", "r_buzz:1", "orange", []],
-    ["r_buzz:2", "buzzer:1", "orange", []],
+    ["esp:D13",  "rbuzz:1",  "orange", []],
+    ["rbuzz:2",  "buzzer:1", "orange", []],
     ["esp:GND.1","buzzer:2", "black",  []],
 
-    ["esp:VN",   "sw:2",    "green", []],
-    ["esp:GND.1","sw:1",    "black", []],
-    ["esp:VN",   "r_sw:1",  "green", []],
-    ["esp:3V3",  "r_sw:2",  "red",   []],
+    ["esp:D36",  "sw:1.l",  "green", []],
+    ["esp:GND.1","sw:2.l",  "black", []],
+    ["esp:D36",  "rsw:1",   "green", []],
+    ["esp:3V3",  "rsw:2",   "red",   []],
 
     ["esp:3V3",  "pot:VCC", "red",   []],
     ["esp:GND.1","pot:GND", "black", []],
-    ["esp:VP",   "pot:SIG", "green", []]
+    ["esp:D39",  "pot:SIG", "green", []]
   ]
 }
