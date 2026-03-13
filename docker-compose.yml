@@ -54,7 +54,7 @@ services:
       # │  OpenClaw — Neo APPELLE OpenClaw via HTTP (OpenAI-compat.)  │
       # └─────────────────────────────────────────────────────────────┘
       # host.docker.internal → pointe vers le host depuis le container
-      OPENCLAW_URL:   "http://host.docker.internal:18789"
+      OPENCLAW_URL:   "http://172.22.0.1:18790"
       OPENCLAW_TOKEN: "48456fb15f32065747b6d2c540179d1dac3c67773521c6d3ebbe70268d63e8fa"
       OPENCLAW_AGENT: "main"
 
@@ -84,6 +84,14 @@ services:
         condition: service_healthy
     networks:
       - neo_net
+
+  # ── Socat proxy — expose OpenClaw (127.0.0.1:18789) sur 0.0.0.0:18790 ──
+  socat:
+    image: alpine/socat:latest
+    container_name: neo_socat
+    restart: unless-stopped
+    network_mode: host
+    command: TCP-LISTEN:18790,fork,reuseaddr TCP:127.0.0.1:18789
 
   # ── Broker MQTT local Mosquitto (OPTIONNEL) ──────────────────────
   # Décommentez ce bloc si vous n'avez PAS de broker MQTT externe.

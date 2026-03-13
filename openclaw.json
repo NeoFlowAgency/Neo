@@ -1,0 +1,19 @@
+{
+  "gateway": {
+    "mode": "local",
+    "port": 18789,
+    "bind": "lan",
+    "http": {
+      "endpoints": {
+        "chatCompletions": { "enabled": true }
+      }
+    },
+    "auth": {
+      "mode": "token",
+      "token": "48456fb15f32065747b6d2c540179d1dac3c67773521c6d3ebbe70268d63e8fa"
+    },
+    "controlUi": {
+      "dangerouslyAllowHostHeaderOriginFallback": true
+    }
+  }
+}
