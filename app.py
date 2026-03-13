@@ -1,9 +1,11 @@
+import eventlet
+eventlet.monkey_patch()
+
 import json
 import os
 import threading
 import time
 import requests
-import eventlet
 from collections import deque
 from flask import Flask, render_template, send_from_directory, jsonify, request, session
 from flask_socketio import SocketIO, emit
@@ -274,7 +276,7 @@ def on_chat(data):
             send_command("dire", texte=full[:200])
             log("CHAT", f"Neo → {full[:100]}")
 
-    threading.Thread(target=_stream, daemon=True).start()
+    socketio.start_background_task(_stream)
 
 @socketio.on("test_component")
 def on_test(data):
@@ -316,7 +318,7 @@ def on_test(data):
                 socketio.emit("servo_state", servo_state)
                 socketio.emit("test_result", {"component": "servo_pan", "ok": True,
                                               "msg": "Sweep Pan 60°→120°→90° (vérifie visuellement)"})
-            threading.Thread(target=_sweep, daemon=True).start()
+            socketio.start_background_task(_sweep)
             return
 
     elif comp == "servo_tilt":
@@ -333,7 +335,7 @@ def on_test(data):
                 socketio.emit("servo_state", servo_state)
                 socketio.emit("test_result", {"component": "servo_tilt", "ok": True,
                                               "msg": "Sweep Tilt 60°→120°→90° (vérifie visuellement)"})
-            threading.Thread(target=_sweep, daemon=True).start()
+            socketio.start_background_task(_sweep)
             return
 
     elif comp == "full":
@@ -355,7 +357,7 @@ def on_test(data):
             msg = f"Partiel — erreurs: {', '.join(errors)}" if errors else "Tous les composants OK"
             socketio.emit("test_result", {"component": "full", "ok": not errors, "msg": msg})
 
-        threading.Thread(target=_full, daemon=True).start()
+        socketio.start_background_task(_full)
         return
 
     log("TEST", f"{comp} → {'OK' if result['ok'] else 'FAIL'} {result['msg']}")
