@@ -51,12 +51,15 @@ services:
       NEO_MQTT_PORT: "1883"
 
       # ┌─────────────────────────────────────────────────────────────┐
-      # │  OpenClaw — OpenClaw APPELLE Neo (pas l'inverse)            │
+      # │  OpenClaw — Neo APPELLE OpenClaw via HTTP (OpenAI-compat.)  │
       # └─────────────────────────────────────────────────────────────┘
-      # Clé API optionnelle — OpenClaw doit envoyer X-Api-Key: <valeur>
-      # Laisser vide pour désactiver l'auth sur ces endpoints
-      OPENCLAW_API_KEY: ""
+      # host.docker.internal → pointe vers le host depuis le container
+      OPENCLAW_URL:   "http://host.docker.internal:18789"
+      OPENCLAW_TOKEN: "48456fb15f32065747b6d2c540179d1dac3c67773521c6d3ebbe70268d63e8fa"
+      OPENCLAW_AGENT: "main"
 
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # accès au host depuis le container
     networks:
       - neo_net
     healthcheck:
