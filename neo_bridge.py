@@ -3,7 +3,7 @@
 neo_bridge.py — Pont audio Neo
   Micro ESP32 (MQTT neo/audio/mic)
     → STT (faster-whisper)
-    → OpenClaw (WebSocket Gateway)
+    → OpenClaw (HTTP /v1/chat/completions)
     → TTS (edge-tts)
     → Speaker ESP32 (MQTT neo/audio/data)
 """
@@ -16,19 +16,21 @@ import time
 import wave
 
 import paho.mqtt.client as mqtt
-import websocket
+import requests
 import edge_tts
 from faster_whisper import WhisperModel
 
 # ── Config ─────────────────────────────────────────────────────
-MQTT_HOST    = "localhost"
-MQTT_PORT    = 1883
-TOPIC_MIC    = "neo/audio/mic"
-TOPIC_AUDIO  = "neo/audio/data"
-TOPIC_CMD    = "neo/commandes"
+MQTT_HOST      = "localhost"
+MQTT_PORT      = 1883
+TOPIC_MIC      = "neo/audio/mic"
+TOPIC_AUDIO    = "neo/audio/data"
+TOPIC_CMD      = "neo/commandes"
 
-OPENCLAW_WS  = "ws://127.0.0.1:18789"
-TTS_VOICE    = "fr-FR-DeniseNeural"
+OPENCLAW_URL   = "http://127.0.0.1:18789"
+OPENCLAW_TOKEN = "48456fb15f32065747b6d2c540179d1dac3c67773521c6d3ebbe70268d63e8fa"
+OPENCLAW_AGENT = "main"
+TTS_VOICE      = "fr-FR-DeniseNeural"
 SAMPLE_RATE  = 16000
 CHUNK_SIZE   = 1024            # bytes per MQTT publish
 SILENCE_SEC  = 1.5             # silence before processing utterance
@@ -54,28 +56,29 @@ def rms(data: bytes) -> float:
 
 
 # ── OpenClaw ───────────────────────────────────────────────────
-_oc_ws: websocket.WebSocket | None = None
-_oc_id = 0
-
-
 def openclaw_ask(text: str) -> str:
-    global _oc_ws, _oc_id
+    """Envoie un message à OpenClaw via l'API HTTP (OpenAI-compatible) et retourne la réponse."""
     try:
-        if _oc_ws is None or not _oc_ws.connected:
-            _oc_ws = websocket.create_connection(OPENCLAW_WS, timeout=15)
-        _oc_id += 1
-        req = {
-            "method": "agent.send_message",
-            "params": {"agentId": "main", "message": text},
-            "id": _oc_id,
+        headers = {
+            "Authorization":       f"Bearer {OPENCLAW_TOKEN}",
+            "Content-Type":        "application/json",
+            "x-openclaw-agent-id": OPENCLAW_AGENT,
         }
-        _oc_ws.send(json.dumps(req))
-        raw = _oc_ws.recv()
-        data = json.loads(raw)
-        return data.get("result", {}).get("output", "")
+        payload = {
+            "model":    "openclaw",
+            "user":     "neo_bridge",
+            "messages": [{"role": "user", "content": text}],
+        }
+        r = requests.post(
+            f"{OPENCLAW_URL}/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"]
     except Exception as e:
         print(f"[OpenClaw] Erreur: {e}")
-        _oc_ws = None
         return "Désolé, je n'ai pas pu me connecter à mon cerveau."
 
 

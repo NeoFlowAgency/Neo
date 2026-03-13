@@ -2,17 +2,21 @@ import json
 import os
 import threading
 import time
+import requests
 import eventlet
 from collections import deque
-from flask import Flask, render_template, send_from_directory, jsonify, request, session, Response, stream_with_context
+from flask import Flask, render_template, send_from_directory, jsonify, request, session
 from flask_socketio import SocketIO, emit
 import paho.mqtt.client as mqtt
 
-# ── Config (env vars or defaults) ────────────────────────────
-MQTT_HOST        = os.environ.get("NEO_MQTT_HOST", "72.61.111.8")
-MQTT_PORT        = int(os.environ.get("NEO_MQTT_PORT", "1883"))
-APP_PASSWORD     = os.environ.get("APP_PASSWORD", "neo")
-OPENCLAW_API_KEY = os.environ.get("OPENCLAW_API_KEY", "")
+# ── Config ────────────────────────────────────────────────────
+MQTT_HOST      = os.environ.get("NEO_MQTT_HOST", "72.61.111.8")
+MQTT_PORT      = int(os.environ.get("NEO_MQTT_PORT", "1883"))
+APP_PASSWORD   = os.environ.get("APP_PASSWORD", "neo")
+OPENCLAW_URL   = os.environ.get("OPENCLAW_URL", "http://127.0.0.1:18789")
+OPENCLAW_TOKEN = os.environ.get("OPENCLAW_TOKEN", "48456fb15f32065747b6d2c540179d1dac3c67773521c6d3ebbe70268d63e8fa")
+OPENCLAW_AGENT = os.environ.get("OPENCLAW_AGENT", "main")
+
 TOPIC_CMD    = "neo/commandes"
 TOPIC_STATUS = "neo/status"
 
@@ -25,7 +29,31 @@ mqtt_connected  = False
 esp32_last_seen = 0
 servo_state     = {"pan": 90, "tilt": 90}
 logs            = deque(maxlen=400)
-chat_history    = deque(maxlen=20)   # historique pour contexte OpenClaw
+chat_history    = deque(maxlen=20)
+
+# ── OpenClaw status cache ──────────────────────────────────────
+_openclaw_alive      = False
+_openclaw_last_check = 0
+_openclaw_check_lock = threading.Lock()
+
+def _refresh_openclaw_status():
+    global _openclaw_alive, _openclaw_last_check
+    try:
+        r = requests.get(
+            f"{OPENCLAW_URL}/v1/models",
+            headers={"Authorization": f"Bearer {OPENCLAW_TOKEN}"},
+            timeout=2,
+        )
+        _openclaw_alive = (r.status_code == 200)
+    except Exception:
+        _openclaw_alive = False
+    _openclaw_last_check = time.time()
+
+def openclaw_alive() -> bool:
+    with _openclaw_check_lock:
+        if time.time() - _openclaw_last_check > 10:
+            threading.Thread(target=_refresh_openclaw_status, daemon=True).start()
+    return _openclaw_alive
 
 # ── Logging ───────────────────────────────────────────────────
 def log(level, msg):
@@ -88,28 +116,49 @@ def send_command(action, **kwargs):
     log("CMD", f"→ {action} {kwargs if kwargs else ''}")
     return True
 
-# ── OpenClaw — SSE push (zéro polling côté OpenClaw) ─────────────
-_sse_queues   = []                 # une queue eventlet par client SSE connecté
-_sse_lock     = threading.Lock()
-_pending      = deque(maxlen=50)   # fallback si OpenClaw utilise /api/neo/pending
-_pending_lock = threading.Lock()
-_openclaw_last_poll = 0
-
-def _check_openclaw_api_key():
-    """Vérifie la clé API si elle est configurée. Retourne True si OK."""
-    if not OPENCLAW_API_KEY:
-        return True  # pas de clé configurée = accès libre
-    return request.headers.get("X-Api-Key") == OPENCLAW_API_KEY
+# ── OpenClaw — appel HTTP streaming ───────────────────────────
+def _openclaw_stream_tokens(messages, user_id="neo_user"):
+    """Générateur : yield les tokens depuis l'API OpenClaw (OpenAI-compatible)."""
+    headers = {
+        "Authorization":      f"Bearer {OPENCLAW_TOKEN}",
+        "Content-Type":       "application/json",
+        "x-openclaw-agent-id": OPENCLAW_AGENT,
+    }
+    payload = {
+        "model":    "openclaw",
+        "stream":   True,
+        "user":     user_id,
+        "messages": messages,
+    }
+    with requests.post(
+        f"{OPENCLAW_URL}/v1/chat/completions",
+        headers=headers,
+        json=payload,
+        stream=True,
+        timeout=60,
+    ) as resp:
+        resp.raise_for_status()
+        for line in resp.iter_lines():
+            if not line:
+                continue
+            if line.startswith(b"data: "):
+                chunk_str = line[6:].decode("utf-8")
+                if chunk_str.strip() == "[DONE]":
+                    return
+                try:
+                    chunk = json.loads(chunk_str)
+                    token = chunk["choices"][0]["delta"].get("content", "")
+                    if token:
+                        yield token
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    pass
 
 # ── Helpers ───────────────────────────────────────────────────
 def get_conn_state():
-    esp32_alive    = (time.time() - esp32_last_seen)     < 30 if esp32_last_seen     else False
-    sse_alive      = len(_sse_queues) > 0
-    poll_alive     = (time.time() - _openclaw_last_poll) < 60 if _openclaw_last_poll else False
-    openclaw_alive = sse_alive or poll_alive
+    esp32_alive = (time.time() - esp32_last_seen) < 30 if esp32_last_seen else False
     return {
         "mqtt":     mqtt_connected,
-        "openclaw": openclaw_alive,
+        "openclaw": openclaw_alive(),
         "esp32":    esp32_alive,
     }
 
@@ -142,100 +191,17 @@ def api_me():
 def api_status():
     return jsonify({
         **get_conn_state(),
-        "servo": servo_state,
+        "servo":  servo_state,
         "uptime": int(time.time()),
     })
-
-# ── OpenClaw REST API ──────────────────────────────────────────
-
-@app.route("/api/neo/stream")
-def api_neo_stream():
-    """SSE — connexion persistante. Neo pousse les messages dès qu'ils arrivent.
-    OpenClaw : curl -N http://72.61.111.8:8080/api/neo/stream
-    Zéro requête quand personne n'écrit. Message instantané quand l'utilisateur écrit."""
-    global _openclaw_last_poll
-    if not _check_openclaw_api_key():
-        return jsonify({"error": "Unauthorized"}), 401
-
-    queue = eventlet.Queue()
-    with _sse_lock:
-        _sse_queues.append(queue)
-
-    def generate():
-        global _openclaw_last_poll
-        _openclaw_last_poll = time.time()
-        socketio.emit("conn_state", get_conn_state())
-        log("INFO", "OpenClaw SSE connecté")
-        try:
-            yield "data: {\"type\":\"connected\"}\n\n"
-            while True:
-                try:
-                    msg = queue.get(timeout=30)
-                    if msg is None:
-                        break
-                    _openclaw_last_poll = time.time()
-                    socketio.emit("conn_state", get_conn_state())
-                    yield f"data: {json.dumps(msg)}\n\n"
-                except eventlet.queue.Empty:
-                    yield ": keepalive\n\n"   # maintient la connexion ouverte
-        finally:
-            with _sse_lock:
-                try:
-                    _sse_queues.remove(queue)
-                except ValueError:
-                    pass
-            log("INFO", "OpenClaw SSE déconnecté")
-
-    return Response(
-        stream_with_context(generate()),
-        content_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-@app.route("/api/neo/pending", methods=["GET"])
-def api_neo_pending():
-    """Fallback polling pour OpenClaw si SSE non supporté."""
-    global _openclaw_last_poll
-    if not _check_openclaw_api_key():
-        return jsonify({"error": "Unauthorized"}), 401
-    _openclaw_last_poll = time.time()
-    socketio.emit("conn_state", get_conn_state())
-    deadline = time.time() + 25
-    while time.time() < deadline:
-        with _pending_lock:
-            if _pending:
-                msg = _pending.popleft()
-                return jsonify({"messages": [msg]})
-        eventlet.sleep(0.5)
-    return jsonify({"messages": []})
-
-@app.route("/api/neo/message", methods=["POST"])
-def api_neo_message():
-    """OpenClaw envoie une réponse à afficher dans le chat."""
-    global _openclaw_last_poll
-    if not _check_openclaw_api_key():
-        return jsonify({"error": "Unauthorized"}), 401
-    data = request.get_json(silent=True) or {}
-    text = data.get("text", "").strip()
-    if not text:
-        return jsonify({"error": "Champ 'text' manquant"}), 400
-    log("CHAT", f"OpenClaw → {text[:100]}")
-    chat_history.append({"role": "neo", "text": text, "t": time.time()})
-    socketio.emit("chat_reply", {"text": text})
-    # Affichage sur LCD + synthèse vocale
-    send_command("lcd",  texte=f"Neo: {text[:28]}")
-    send_command("dire", texte=text[:200])
-    _openclaw_last_poll = time.time()
-    socketio.emit("conn_state", get_conn_state())
-    return jsonify({"ok": True})
 
 # ── Socket events ─────────────────────────────────────────────
 @socketio.on("connect")
 def on_connect():
     if not session.get("auth"):
-        return False  # reject unauthenticated connections
-    emit("conn_state",  get_conn_state())
-    emit("servo_state", servo_state)
+        return False
+    emit("conn_state",   get_conn_state())
+    emit("servo_state",  servo_state)
     emit("logs_history", list(logs)[-60:])
 
 @socketio.on("command")
@@ -275,55 +241,70 @@ def on_chat(data):
     message = data.get("message", "").strip()
     if not message:
         return
+
     log("CHAT", f"Tu → {message}")
     chat_history.append({"role": "user", "text": message, "t": time.time()})
-    msg = {
-        "text":    message,
-        "timestamp": time.time(),
-        "history": list(chat_history)[-10:],   # 10 derniers tours pour contexte
-    }
-    # Push immédiat vers les clients SSE (OpenClaw)
-    with _sse_lock:
-        for q in _sse_queues:
-            q.put(msg)
-    # Fallback polling
-    with _pending_lock:
-        _pending.append(msg)
+
+    # Construire le contexte pour OpenClaw (10 derniers tours)
+    messages = []
+    for h in list(chat_history)[-10:]:
+        role = "assistant" if h["role"] == "neo" else "user"
+        messages.append({"role": role, "content": h["text"]})
+
     emit("chat_thinking", {})
+
+    def _stream():
+        full = ""
+        try:
+            for token in _openclaw_stream_tokens(messages):
+                full += token
+                socketio.emit("chat_token", {"token": token})
+        except Exception as e:
+            log("ERR", f"OpenClaw: {e}")
+            socketio.emit("chat_reply", {
+                "text":  "Désolé, je ne peux pas me connecter à mon cerveau.",
+                "error": True,
+            })
+            return
+
+        if full:
+            chat_history.append({"role": "neo", "text": full, "t": time.time()})
+            socketio.emit("chat_reply", {"text": full})
+            send_command("lcd",  texte=f"Neo: {full[:28]}")
+            send_command("dire", texte=full[:200])
+            log("CHAT", f"Neo → {full[:100]}")
+
+    threading.Thread(target=_stream, daemon=True).start()
 
 @socketio.on("test_component")
 def on_test(data):
-    comp = data.get("component", "")
+    comp   = data.get("component", "")
     result = {"component": comp, "ok": False, "msg": ""}
 
     if comp == "mqtt":
         result["ok"]  = mqtt_connected
-        result["msg"] = f"Broker MQTT connecté ({MQTT_HOST})" if mqtt_connected else f"MQTT non connecté à {MQTT_HOST}:{MQTT_PORT}"
+        result["msg"] = (f"Broker MQTT connecté ({MQTT_HOST})" if mqtt_connected
+                         else f"MQTT non connecté à {MQTT_HOST}:{MQTT_PORT}")
 
     elif comp == "openclaw":
-        alive = (time.time() - _openclaw_last_poll) < 60 if _openclaw_last_poll else False
-        result["ok"]  = alive
-        result["msg"] = (
-            f"OpenClaw actif (dernier poll il y a {int(time.time()-_openclaw_last_poll)}s)"
-            if alive else
-            "OpenClaw n'a pas encore pollé /api/neo/pending. "
-            "Configure OpenClaw pour appeler GET http://72.61.111.8:8080/api/neo/pending"
-        )
+        _refresh_openclaw_status()
+        result["ok"]  = _openclaw_alive
+        result["msg"] = (f"OpenClaw actif sur {OPENCLAW_URL}" if _openclaw_alive
+                         else f"OpenClaw injoignable sur {OPENCLAW_URL} — vérifie que chatCompletions est activé")
 
     elif comp == "lcd":
         ok = send_command("lcd", texte="TEST LCD OK     ")
         result["ok"]  = ok
-        result["msg"] = "Commande envoyée au LCD" if ok else "MQTT non connecté — commande non envoyée"
+        result["msg"] = "Commande envoyée au LCD" if ok else "MQTT non connecté"
 
     elif comp == "buzzer":
         ok = send_command("buzzer_test")
         result["ok"]  = ok
-        result["msg"] = "Signal envoyé au buzzer" if ok else "MQTT non connecté — commande non envoyée"
+        result["msg"] = "Signal envoyé au buzzer" if ok else "MQTT non connecté"
 
     elif comp == "servo_pan":
         if not mqtt_connected:
-            result["ok"]  = False
-            result["msg"] = "MQTT non connecté — impossible de tester les servos"
+            result = {"component": comp, "ok": False, "msg": "MQTT non connecté"}
         else:
             def _sweep():
                 send_command("servo_direct", pan=60,  tilt=servo_state["tilt"])
@@ -334,14 +315,13 @@ def on_test(data):
                 servo_state["pan"] = 90
                 socketio.emit("servo_state", servo_state)
                 socketio.emit("test_result", {"component": "servo_pan", "ok": True,
-                                              "msg": "Sweep Pan: 60° → 120° → 90° (vérifie visuellement)"})
+                                              "msg": "Sweep Pan 60°→120°→90° (vérifie visuellement)"})
             threading.Thread(target=_sweep, daemon=True).start()
             return
 
     elif comp == "servo_tilt":
         if not mqtt_connected:
-            result["ok"]  = False
-            result["msg"] = "MQTT non connecté — impossible de tester les servos"
+            result = {"component": comp, "ok": False, "msg": "MQTT non connecté"}
         else:
             def _sweep():
                 send_command("servo_direct", pan=servo_state["pan"], tilt=60)
@@ -352,46 +332,28 @@ def on_test(data):
                 servo_state["tilt"] = 90
                 socketio.emit("servo_state", servo_state)
                 socketio.emit("test_result", {"component": "servo_tilt", "ok": True,
-                                              "msg": "Sweep Tilt: 60° → 120° → 90° (vérifie visuellement)"})
+                                              "msg": "Sweep Tilt 60°→120°→90° (vérifie visuellement)"})
             threading.Thread(target=_sweep, daemon=True).start()
             return
 
     elif comp == "full":
         if not mqtt_connected:
-            result = {"component": "full", "ok": False, "msg": "MQTT non connecté — test complet impossible"}
-            emit("test_result", result)
+            emit("test_result", {"component": "full", "ok": False, "msg": "MQTT non connecté"})
             return
 
         def _full():
             errors = []
-            # Test MQTT
-            if not mqtt_connected:
-                errors.append("MQTT déconnecté")
-            # Test OpenClaw
-            oc_alive = (time.time() - _openclaw_last_poll) < 60 if _openclaw_last_poll else False
-            if not oc_alive:
-                errors.append("OpenClaw n'a pas encore pollé")
-            # Test servos
-            send_command("tete_gauche")
-            time.sleep(0.4)
-            send_command("tete_droite")
-            time.sleep(0.4)
-            send_command("tete_haut")
-            time.sleep(0.4)
-            send_command("tete_bas")
-            time.sleep(0.4)
-            send_command("tete_centre")
-            time.sleep(0.3)
-            # Test LCD
+            _refresh_openclaw_status()
+            if not _openclaw_alive:
+                errors.append("OpenClaw injoignable")
+            send_command("tete_gauche"); time.sleep(0.4)
+            send_command("tete_droite"); time.sleep(0.4)
+            send_command("tete_haut");   time.sleep(0.4)
+            send_command("tete_bas");    time.sleep(0.4)
+            send_command("tete_centre"); time.sleep(0.3)
             send_command("lcd", texte="TEST COMPLET OK!")
-            time.sleep(0.3)
-
-            if errors:
-                socketio.emit("test_result", {"component": "full", "ok": False,
-                                              "msg": f"Partiel — erreurs: {', '.join(errors)}"})
-            else:
-                socketio.emit("test_result", {"component": "full", "ok": True,
-                                              "msg": "Tous les composants OK"})
+            msg = f"Partiel — erreurs: {', '.join(errors)}" if errors else "Tous les composants OK"
+            socketio.emit("test_result", {"component": "full", "ok": not errors, "msg": msg})
 
         threading.Thread(target=_full, daemon=True).start()
         return
@@ -411,7 +373,8 @@ def on_clear_logs():
 # ── Main ──────────────────────────────────────────────────────
 if __name__ == "__main__":
     threading.Thread(target=mqtt_loop, daemon=True).start()
+    threading.Thread(target=_refresh_openclaw_status, daemon=True).start()
     port = int(os.environ.get("PORT", 8000))
     log("INFO", f"Neo Control Center démarré sur http://0.0.0.0:{port}")
-    log("INFO", f"MQTT → {MQTT_HOST}:{MQTT_PORT} | OpenClaw → polling sur /api/neo/pending")
+    log("INFO", f"OpenClaw → {OPENCLAW_URL} (agent: {OPENCLAW_AGENT})")
     socketio.run(app, host="0.0.0.0", port=port, debug=False)
