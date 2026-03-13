@@ -56,38 +56,38 @@
 
 > L'ESP32 dispose de ~30 GPIO utilisables. Voici l'attribution complète.
 
-| GPIO | Fonction | Composant | Protocole |
-|------|----------|-----------|-----------|
-| 25   | I2S WS (LRC) | MAX98357 ampli | I2S |
-| 26   | I2S BCLK | MAX98357 ampli | I2S |
-| 22   | I2S DOUT | MAX98357 ampli | I2S |
-| 32   | I2S WS | INMP441 micro | I2S |
-| 33   | I2S SCK | INMP441 micro | I2S |
-| 34   | I2S SD (data in) | INMP441 micro | I2S (entrée) |
-| 18   | Servo S1 (torse) | MG996R | PWM |
-| 19   | Servo S2 (cou yaw) | MG996R | PWM |
-| 21   | Servo S3 (tête roll) | MG996R | PWM |
-| 23   | Servo S4 (tête pitch) | MG996R | PWM |
-| 27   | Servo S5 (bouche) | SG90 | PWM |
-| 4    | I2C SDA | LCD 16x2 + RTC | I2C |
-| 5    | I2C SCL | LCD 16x2 + RTC | I2C |
-| 13   | Keypad Row 1 | Keypad 4×4 | Digital |
-| 14   | Keypad Row 2 | Keypad 4×4 | Digital |
-| 15   | Keypad Row 3 | Keypad 4×4 | Digital |
-| 16   | Keypad Row 4 | Keypad 4×4 | Digital |
-| 17   | Keypad Col 1 | Keypad 4×4 | Digital |
-| 12   | Keypad Col 2 | Keypad 4×4 | Digital |
-| 35   | Keypad Col 3 | Keypad 4×4 | Digital |
-| 36   | Keypad Col 4 | Keypad 4×4 | Digital |
-| 2    | Buzzer | KSG3603 | Digital/PWM |
-| 0    | Switch | Interrupteur | Digital (INPUT_PULLUP) |
-| 39   | Potentiomètre | Volume/réglage | Analogique (ADC) |
-| 1    | UART TX | Debug/Serial | UART |
-| 3    | UART RX | Debug/Serial | UART |
+| GPIO | Label DevKit | Fonction | Composant | Notes |
+|------|-------------|----------|-----------|-------|
+| 0  | D0  | Keypad Col 4 | Keypad 4×4 | Strapping pin — OK après boot |
+| 2  | D2  | Keypad Col 3 | Keypad 4×4 | Strapping pin — OK après boot |
+| 4  | D4  | I2C SDA | LCD 16x2 + RTC | Bus I2C partagé |
+| 5  | D5  | I2C SCL | LCD 16x2 + RTC | Bus I2C partagé |
+| 12 | D12 | Keypad Col 2 | Keypad 4×4 | Strapping pin — OK après boot |
+| 13 | D13 | Buzzer | KSG3603 | Via résistance 100Ω |
+| 14 | D14 | I2S SCK (mic) | INMP441 | Horloge micro |
+| 15 | D15 | I2S WS (mic) | INMP441 | Word Select micro |
+| 16 | RX2 | Keypad Row 1 | Keypad 4×4 | INPUT_PULLUP interne |
+| 17 | TX2 | Keypad Row 2 | Keypad 4×4 | INPUT_PULLUP interne |
+| 18 | D18 | Servo S1 — Torse | MG996R | PWM |
+| 19 | D19 | Servo S2 — Cou | MG996R | PWM |
+| 21 | D21 | Servo S3 — Roll | MG996R | PWM |
+| 22 | D22 | I2S DIN (ampli) | MAX98357 | Data audio |
+| 23 | D23 | Servo S4 — Pitch | MG996R | PWM |
+| 25 | D25 | I2S LRC (ampli) | MAX98357 | Word Select ampli |
+| 26 | D26 | I2S BCLK (ampli) | MAX98357 | Bit Clock ampli |
+| 27 | D27 | Servo S5 — Bouche | SG90 | PWM |
+| 32 | D32 | I2S SD (mic) | INMP441 | Données micro (INPUT) |
+| 33 | D33 | Keypad Col 1 | Keypad 4×4 | OUTPUT |
+| 34 | D34 | Keypad Row 3 | Keypad 4×4 | INPUT seul — 10kΩ pullup externe |
+| 35 | D35 | Keypad Row 4 | Keypad 4×4 | INPUT seul — 10kΩ pullup externe |
+| 36 | VN  | Switch | Interrupteur | INPUT seul — 10kΩ pullup externe |
+| 39 | VP  | Potentiomètre | Volume/réglage | ADC INPUT |
 
-> **Note LCD :** Le LCD 16x2 doit utiliser un module I2C (PCF8574) pour éviter d'utiliser 6 GPIO. Si ton LCD n'a pas encore de module I2C, il faut en commander un (~1€).
+> **Note LCD :** Le LCD 16x2 doit avoir un module I2C (PCF8574) soudé derrière. À commander si absent (~1€). Adresse par défaut : `0x27`.
 
-> **Note RTC :** Le module MH RTC (DS1307 ou DS3231) se met sur le même bus I2C (même SDA/SCL). Adresse I2C différente, aucun conflit.
+> **Note RTC :** Partage le même bus I2C que le LCD (même SDA/SCL, GPIO 4/5). Adresse `0x68`, aucun conflit.
+
+> **Note GPIO input-only :** GPIO 34, 35, 36 sont entrées uniquement et n'ont PAS de pull-up interne. Ajouter des résistances 10kΩ externes entre ces pins et 3.3V (voir guide de câblage).
 
 ## 4. Alimentation — POINT CRITIQUE ⚠️
 
