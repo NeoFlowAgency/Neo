@@ -36,7 +36,7 @@ services:
       SECRET_KEY: "REMPLACEZ_PAR_UNE_CLE_ALEATOIRE_LONGUE"   # ← À MODIFIER
 
       # Mot de passe pour accéder à l'interface web
-      APP_PASSWORD: "neo"   # ← CHANGEZ CE MOT DE PASSE !
+      APP_PASSWORD: "Noakim05042010."
 
       # Port d'écoute du backend (doit correspondre à EXPOSE dans Dockerfile)
       PORT: "8000"
