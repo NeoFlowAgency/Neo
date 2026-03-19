@@ -10,8 +10,7 @@
   ║  MAX98357 BCLK  → GPIO 26                                    ║
   ║  MAX98357 LRC   → GPIO 25                                    ║
   ║  MAX98357 DIN   → GPIO 22                                    ║
-  ║  Détecteur DO   → GPIO 35  (sortie digitale du module)      ║
-  ║  Détecteur AO   → GPIO 36  (sortie analogique — optionnel)  ║
+  ║  Détecteur OUT  → GPIO 35  (module 3 broches MH-M38)        ║
   ║  Clavier lignes → GPIO 13, 14, 16, 17                       ║
   ║  Clavier cols   → GPIO 15, 12, 2, 5                         ║
   ╠══════════════════════════════════════════════════════════════╣
@@ -31,8 +30,7 @@
 // ── PINS ─────────────────────────────────────────────────────────────────────
 #define PIN_POT      34   // Potentiomètre (ADC1 — fonctionne sans WiFi)
 #define PIN_SERVO    18
-#define PIN_DET_DO   35   // Détecteur son — sortie digitale (input only)
-#define PIN_DET_AO   36   // Détecteur son — sortie analogique (input only)
+#define PIN_DET_OUT  35   // Détecteur son MH-M38 — OUT (3 broches : VCC/GND/OUT)
 
 // ── I2S / MAX98357 ────────────────────────────────────────────────────────────
 #define I2S_BCLK     26
@@ -185,8 +183,8 @@ void setup() {
   // I2S
   i2sInit();
 
-  // Pins détecteur (input only — pas de pullup interne possible sur 35/36)
-  pinMode(PIN_DET_DO, INPUT);
+  // Détecteur MH-M38 : OUT = LOW quand son détecté (pas de pullup interne sur GPIO 35)
+  pinMode(PIN_DET_OUT, INPUT);
 
   // Démarrage
   Serial.println("=== NEO LABO V2 ===");
@@ -227,7 +225,7 @@ void loop() {
   if (clapEnabled) {
     // DO = LOW quand son détecté sur la plupart des modules KY-038
     // Si ça ne marche pas, essaie d'inverser : (digitalRead == HIGH)
-    bool soundDetected = (digitalRead(PIN_DET_DO) == LOW);
+    bool soundDetected = (digitalRead(PIN_DET_OUT) == LOW);  // LOW = son détecté sur MH-M38
 
     if (soundDetected && millis() - lastClap > CLAP_DEBOUNCE_MS) {
       lastClap = millis();

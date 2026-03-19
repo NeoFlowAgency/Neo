@@ -39,19 +39,25 @@ SD        →  laisser non connecté (ou 3.3V pour activer en permanence)
 
 ---
 
-### Détecteur de son (module 4 broches type KY-038)
+### Détecteur de son (module 3 broches MH-M38)
 ```
-VCC → 3.3V  (ou 5V si le module le demande)
+VCC → 3.3V
 GND → GND
-DO  → GPIO 35   ← c'est ce qui détecte les claps
-AO  → GPIO 36   ← lecture niveau sonore analogique (optionnel)
+OUT → GPIO 35   ← détection clap/son
 ```
-> La sensibilité se règle avec le petit potentiomètre sur le module.
-> Tourne-le jusqu'à ce que la LED s'allume quand tu frappes dans tes mains.
+> **OUT = LOW quand un son est détecté**, HIGH au repos.
+>
+> La sensibilité se règle avec le petit potentiomètre bleu sur le module.
+> La LED "开关指示" (switch) s'allume quand un son est détecté.
+> Tourne le potentiomètre jusqu'à ce qu'elle réagisse à tes claps.
 
-**Si la détection est inversée** (déclenche sans son), change dans le code :
+**Si ça déclenche en permanence sans son :**
+→ Tourne le potentiomètre dans le sens inverse (réduire la sensibilité)
+
+**Si ça ne déclenche jamais :**
+→ Tourne le potentiomètre pour augmenter la sensibilité, ou change dans le code :
 ```cpp
-bool soundDetected = (digitalRead(PIN_DET_DO) == LOW);
+bool soundDetected = (digitalRead(PIN_DET_OUT) == LOW);
 // → remplace LOW par HIGH
 ```
 
