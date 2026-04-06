@@ -14,6 +14,11 @@ Get-CimInstance Win32_Process | Where-Object {
   $_.CommandLine -match "python -m http.server 8080"
 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 
+Write-Host "[STOP] Jarvice mode (jarvice_mode.py)"
+Get-CimInstance Win32_Process | Where-Object {
+  $_.CommandLine -match "jarvice_mode.py"
+} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+
 if ($StopOllama) {
   Write-Host "[STOP] Ollama serve"
   Get-CimInstance Win32_Process | Where-Object {

@@ -4,7 +4,8 @@ param(
   [string]$OllamaModel = "gemma4:e4b",
   [string]$OllamaUrl = "http://127.0.0.1:11434/api/generate",
   [int]$BackendPort = 5000,
-  [int]$WebPort = 8080
+  [int]$WebPort = 8080,
+  [switch]$JarviceMode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -80,6 +81,26 @@ if (-not (Test-PortListening -Port $WebPort)) {
   Write-Host "[OK] Web app déjà active sur $WebPort"
 }
 
+# 4) Optional Jarvice always-listening mode
+if ($JarviceMode) {
+  Write-Host "[START] Jarvice mode..."
+  $jarviceCmd = @"
+Set-Location '$ProjectRoot'
+. '$venvActivate'
+`$env:JARVICE_BACKEND = 'http://127.0.0.1:$BackendPort'
+python .\\jarvice_mode.py
+"@
+  Start-Process -FilePath "powershell" -ArgumentList @(
+    "-NoProfile",
+    "-ExecutionPolicy", "Bypass",
+    "-Command", $jarviceCmd
+  ) -WindowStyle Minimized `
+    -RedirectStandardOutput (Join-Path $logsDir "jarvice.out.log") `
+    -RedirectStandardError (Join-Path $logsDir "jarvice.err.log")
+
+  Start-Sleep -Seconds 1
+}
+
 Write-Host ""
 Write-Host "=== NEO démarré ==="
 Write-Host "Backend : http://127.0.0.1:$BackendPort/health"
@@ -87,3 +108,6 @@ Write-Host "Web app : http://127.0.0.1:$WebPort"
 Write-Host "Téléphone : http://<IP_PC>:$WebPort"
 Write-Host "ESP32 URL : $Esp32Url"
 Write-Host "Logs     : $logsDir"
+if ($JarviceMode) {
+  Write-Host "Jarvice  : actif (wake word local)"
+}

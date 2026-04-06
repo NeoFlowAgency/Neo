@@ -226,6 +226,16 @@ Le script démarre automatiquement:
 
 Et écrit les logs dans `.\logs`.
 
+### Mode "Jarvice" (wake word local sur PC)
+
+Pour lancer aussi l'écoute continue (wake words: `neo`, `aria`, `jarvis`, `jarvice`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_robot.ps1 -Esp32Url "http://192.168.1.147" -JarviceMode
+```
+
+Le module `jarvice_mode.py` écoute le micro du PC, détecte le wake word, transcrit la commande et envoie automatiquement au backend `/ask`.
+
 ### Arrêt des services
 
 ```powershell
