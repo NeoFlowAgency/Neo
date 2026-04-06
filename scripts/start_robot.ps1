@@ -5,6 +5,12 @@ param(
   [string]$OllamaUrl = "http://127.0.0.1:11434/api/generate",
   [int]$BackendPort = 5000,
   [int]$WebPort = 8080,
+  [string]$JarviceWakeModel = "small",
+  [string]$JarviceCommandModel = "medium",
+  [string]$JarviceDevice = "auto",
+  [string]$JarviceComputeType = "auto",
+  [string]$JarviceInputDevice = "",
+  [int]$JarviceBeamSize = 5,
   [Alias("JarvisMode","Jarvis","Jarvice")]
   [switch]$JarviceMode
 )
@@ -99,6 +105,12 @@ if ($JarviceMode) {
 Set-Location '$ProjectRoot'
 . '$venvActivate'
 `$env:JARVICE_BACKEND = 'http://127.0.0.1:$BackendPort'
+`$env:JARVICE_WAKE_MODEL = '$JarviceWakeModel'
+`$env:JARVICE_COMMAND_MODEL = '$JarviceCommandModel'
+`$env:JARVICE_DEVICE = '$JarviceDevice'
+`$env:JARVICE_COMPUTE_TYPE = '$JarviceComputeType'
+`$env:JARVICE_BEAM_SIZE = '$JarviceBeamSize'
+`$env:JARVICE_INPUT_DEVICE = '$JarviceInputDevice'
 python .\\jarvice_mode.py
 "@
     Start-Process -FilePath "powershell" -ArgumentList @(
@@ -122,6 +134,11 @@ Write-Host "ESP32 URL : $Esp32Url"
 Write-Host "Logs     : $logsDir"
 if ($JarviceMode) {
   Write-Host "Jarvice  : actif (wake word local)"
+  Write-Host "  Models : wake=$JarviceWakeModel / command=$JarviceCommandModel"
+  Write-Host "  Device : $JarviceDevice ($JarviceComputeType)"
+  if ($JarviceInputDevice) {
+    Write-Host "  Input  : $JarviceInputDevice"
+  }
 } else {
   Write-Host "Jarvice  : inactif (ajoute -JarviceMode)"
 }

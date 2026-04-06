@@ -236,6 +236,36 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start_robot.ps1 -Esp32Url "ht
 
 Le module `jarvice_mode.py` écoute le micro du PC, détecte le wake word, transcrit la commande et envoie automatiquement au backend `/ask`.
 
+### Réglage performance / précision Jarvice (GPU/CPU)
+
+Par défaut, Jarvice utilise:
+- Wake model: `small`
+- Command model: `medium`
+- Device Whisper: `auto` (utilise CUDA si disponible)
+- Beam size: `5`
+
+Exemple pour pousser la qualité sur une machine GPU confortable:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_robot.ps1 `
+  -Esp32Url "http://192.168.1.147" `
+  -JarviceMode `
+  -JarviceWakeModel "small" `
+  -JarviceCommandModel "large-v3" `
+  -JarviceDevice "cuda" `
+  -JarviceComputeType "float16" `
+  -JarviceBeamSize 5
+```
+
+Si tu veux forcer le micro (utile si Voicemod est pris par défaut):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_robot.ps1 `
+  -Esp32Url "http://192.168.1.147" `
+  -JarviceMode `
+  -JarviceInputDevice "21"
+```
+
 ### Arrêt des services
 
 ```powershell

@@ -14,9 +14,7 @@ import queue
 import re
 import sys
 import time
-import wave
 from dataclasses import dataclass
-from pathlib import Path
 
 import numpy as np
 import requests
@@ -28,12 +26,17 @@ from faster_whisper import WhisperModel
 class Config:
     sample_rate: int = int(os.environ.get("JARVICE_SAMPLE_RATE", "16000"))
     wake_chunk_sec: float = float(os.environ.get("JARVICE_WAKE_CHUNK_SEC", "2.0"))
-    command_max_sec: float = float(os.environ.get("JARVICE_COMMAND_MAX_SEC", "8.0"))
-    silence_rms_threshold: float = float(os.environ.get("JARVICE_SILENCE_RMS", "220"))
+    command_max_sec: float = float(os.environ.get("JARVICE_COMMAND_MAX_SEC", "10.0"))
+    silence_rms_threshold: float = float(os.environ.get("JARVICE_SILENCE_RMS", "180"))
     silence_timeout_sec: float = float(os.environ.get("JARVICE_SILENCE_TIMEOUT", "1.2"))
+    min_command_sec: float = float(os.environ.get("JARVICE_MIN_COMMAND_SEC", "1.0"))
     backend_url: str = os.environ.get("JARVICE_BACKEND", "http://127.0.0.1:5000")
-    wake_model: str = os.environ.get("JARVICE_WAKE_MODEL", "tiny")
-    command_model: str = os.environ.get("JARVICE_COMMAND_MODEL", "small")
+    wake_model: str = os.environ.get("JARVICE_WAKE_MODEL", "small")
+    command_model: str = os.environ.get("JARVICE_COMMAND_MODEL", "medium")
+    device: str = os.environ.get("JARVICE_DEVICE", "auto")
+    compute_type: str = os.environ.get("JARVICE_COMPUTE_TYPE", "auto")
+    input_device: str = os.environ.get("JARVICE_INPUT_DEVICE", "")
+    beam_size: int = int(os.environ.get("JARVICE_BEAM_SIZE", "5"))
 
 
 WAKE_PATTERNS = [
@@ -41,8 +44,13 @@ WAKE_PATTERNS = [
     r"\baria\b",
     r"\bjarvis\b",
     r"\bjarvice\b",
+    r"\bjarviss\b",
+    r"\bjarvisse\b",
+    r"\bjarviss[e]?\b",
+    r"\bj[ae]rvisse?\b",
     r"\bok\s+jarvis\b",
     r"\bok\s+jarvice\b",
+    r"\bok\s+neo\b",
 ]
 
 
@@ -52,18 +60,44 @@ def rms_int16(samples: np.ndarray) -> float:
     return float(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
 
 
-def transcribe_int16_pcm(model: WhisperModel, pcm: np.ndarray, sample_rate: int) -> str:
+def normalize_text(text: str) -> str:
+    t = text.lower()
+    t = (
+        t.replace("é", "e")
+        .replace("è", "e")
+        .replace("ê", "e")
+        .replace("ë", "e")
+        .replace("à", "a")
+        .replace("â", "a")
+        .replace("ù", "u")
+        .replace("û", "u")
+        .replace("î", "i")
+        .replace("ï", "i")
+        .replace("ô", "o")
+    )
+    t = t.replace("’", "'")
+    return t
+
+
+def transcribe_int16_pcm(model: WhisperModel, pcm: np.ndarray, sample_rate: int, beam_size: int) -> str:
     if pcm.size == 0:
         return ""
 
     float_audio = pcm.astype(np.float32) / 32768.0
-    segments, _ = model.transcribe(float_audio, language="fr")
+    segments, _ = model.transcribe(
+        float_audio,
+        language="fr",
+        beam_size=beam_size,
+        temperature=0.0,
+        vad_filter=True,
+        condition_on_previous_text=False,
+    )
     text = " ".join(s.text.strip() for s in segments if s.text).strip()
     return text
 
 
 def has_wake_word(text: str) -> bool:
-    t = text.lower()
+    t = normalize_text(text)
     return any(re.search(p, t) for p in WAKE_PATTERNS)
 
 
@@ -75,13 +109,36 @@ def ask_backend(prompt: str, backend_url: str) -> dict:
 
 def main() -> int:
     cfg = Config()
+    compute_type = None if cfg.compute_type == "auto" else cfg.compute_type
+    whisper_device = cfg.device
 
     print(f"[Jarvice] Backend: {cfg.backend_url}")
-    print(f"[Jarvice] Wake model={cfg.wake_model}, Command model={cfg.command_model}")
+    print(
+        f"[Jarvice] Wake model={cfg.wake_model}, "
+        f"Command model={cfg.command_model}, "
+        f"device={whisper_device}, compute={cfg.compute_type}"
+    )
+    if cfg.input_device:
+        print(f"[Jarvice] Input device forcé: {cfg.input_device}")
     print("[Jarvice] Chargement modèles Whisper...")
 
-    wake_model = WhisperModel(cfg.wake_model, device="cpu", compute_type="int8")
-    command_model = WhisperModel(cfg.command_model, device="cpu", compute_type="int8")
+    try:
+        wake_model = WhisperModel(
+            cfg.wake_model,
+            device=whisper_device,
+            compute_type=compute_type,
+            cpu_threads=max(4, os.cpu_count() or 4),
+        )
+        command_model = WhisperModel(
+            cfg.command_model,
+            device=whisper_device,
+            compute_type=compute_type,
+            cpu_threads=max(4, os.cpu_count() or 4),
+        )
+    except Exception as exc:
+        print(f"[Jarvice] Fallback CPU/int8 (raison: {exc})")
+        wake_model = WhisperModel(cfg.wake_model, device="cpu", compute_type="int8")
+        command_model = WhisperModel(cfg.command_model, device="cpu", compute_type="int8")
 
     print("[Jarvice] Prêt. Dis: 'Neo' / 'Aria' / 'Jarvice' ...")
 
@@ -99,6 +156,7 @@ def main() -> int:
         channels=1,
         dtype="int16",
         blocksize=1024,
+        device=(cfg.input_device if cfg.input_device else None),
         callback=callback,
     ):
         wake_buffer = np.empty((0,), dtype=np.int16)
@@ -113,7 +171,12 @@ def main() -> int:
             chunk_to_check = wake_buffer[:wake_samples_target]
             wake_buffer = wake_buffer[wake_samples_target:]
 
-            wake_text = transcribe_int16_pcm(wake_model, chunk_to_check, cfg.sample_rate)
+            wake_text = transcribe_int16_pcm(
+                wake_model,
+                chunk_to_check,
+                cfg.sample_rate,
+                cfg.beam_size,
+            )
             if not wake_text:
                 continue
 
@@ -138,7 +201,11 @@ def main() -> int:
                     break
 
             pcm = np.concatenate(cmd_frames) if cmd_frames else np.empty((0,), dtype=np.int16)
-            command = transcribe_int16_pcm(command_model, pcm, cfg.sample_rate)
+            min_samples = int(cfg.sample_rate * cfg.min_command_sec)
+            if pcm.size < min_samples:
+                print("[Jarvice] Commande trop courte, reprise écoute wake word.")
+                continue
+            command = transcribe_int16_pcm(command_model, pcm, cfg.sample_rate, cfg.beam_size)
 
             if not command:
                 print("[Jarvice] Commande vide, reprise écoute wake word.")
