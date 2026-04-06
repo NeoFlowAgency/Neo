@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NEO Voice Chat</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #0b1020; color: #f3f4f6; }
+    .app { max-width: 760px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+    header { padding: 12px 14px; border-bottom: 1px solid #1f2937; position: sticky; top: 0; background: #0b1020; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    input, button { font-size: 16px; }
+    #serverUrl { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #374151; background: #111827; color: #fff; }
+    .chat { flex: 1; padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+    .bubble { max-width: 84%; padding: 10px 12px; border-radius: 12px; line-height: 1.35; white-space: pre-wrap; }
+    .user { align-self: flex-end; background: #2563eb; }
+    .neo { align-self: flex-start; background: #1f2937; }
+    .meta { font-size: 12px; opacity: .8; margin-top: 6px; }
+    footer { border-top: 1px solid #1f2937; padding: 12px; display: grid; gap: 8px; }
+    #textInput { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #374151; background: #111827; color: #fff; }
+    .controls { display: flex; gap: 8px; }
+    .btn { flex: 1; padding: 12px; border-radius: 10px; border: none; font-weight: 700; }
+    #talkBtn { background: #22c55e; color: #052e16; }
+    #sendBtn { background: #38bdf8; color: #082f49; }
+    #status { font-size: 13px; opacity: .85; }
+    audio { width: 100%; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="row">
+        <input id="serverUrl" value="http://192.168.1.9:5000" />
+      </div>
+      <div id="status">Prêt</div>
+    </header>
+
+    <main id="chat" class="chat"></main>
+
+    <footer>
+      <input id="textInput" placeholder="Écris ici ou appuie sur Parler..." />
+      <div class="controls">
+        <button id="talkBtn" class="btn">🎤 Parler</button>
+        <button id="sendBtn" class="btn">Envoyer</button>
+      </div>
+      <audio id="audio" controls></audio>
+    </footer>
+  </div>
+
+  <script>
+    const chatEl = document.getElementById('chat');
+    const statusEl = document.getElementById('status');
+    const serverUrlEl = document.getElementById('serverUrl');
+    const textInputEl = document.getElementById('textInput');
+    const talkBtn = document.getElementById('talkBtn');
+    const sendBtn = document.getElementById('sendBtn');
+    const audioEl = document.getElementById('audio');
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    let mediaRecorder = null;
+    let mediaChunks = [];
+    let isRecording = false;
+
+    function baseUrl() {
+      return serverUrlEl.value.trim().replace(/\/$/, '');
+    }
+
+    function setStatus(msg) {
+      statusEl.textContent = msg;
+    }
+
+    function addBubble(text, role, action = null) {
+      const div = document.createElement('div');
+      div.className = `bubble ${role}`;
+      div.textContent = text;
+
+      if (action) {
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.textContent = `Action: ${action}`;
+        div.appendChild(meta);
+      }
+
+      chatEl.appendChild(div);
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    async function askServer(prompt) {
+      const url = `${baseUrl()}/ask`;
+      setStatus('Envoi au cerveau local...');
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    }
+
+    async function transcribeAudio(blob) {
+      const url = `${baseUrl()}/transcribe`;
+      setStatus('Transcription audio locale...');
+      const form = new FormData();
+      form.append('audio', blob, 'voice.webm');
+      const res = await fetch(url, { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data.text || '';
+    }
+
+    async function processPrompt(prompt) {
+      const cleaned = (prompt || '').trim();
+      if (!cleaned) return;
+
+      addBubble(cleaned, 'user');
+      textInputEl.value = '';
+
+      try {
+        const data = await askServer(cleaned);
+        addBubble(data.text || '(vide)', 'neo', data.action || 'none');
+
+        if (data.audio_url) {
+          audioEl.src = data.audio_url;
+          try { await audioEl.play(); } catch (_) {}
+        }
+
+        setStatus('OK');
+      } catch (err) {
+        addBubble(`Erreur: ${err.message}`, 'neo');
+        setStatus('Erreur');
+      }
+    }
+
+    function startSpeechRecognition() {
+      if (!SpeechRecognition) return false;
+
+      const rec = new SpeechRecognition();
+      rec.lang = 'fr-FR';
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+
+      setStatus('Écoute (Web Speech)...');
+      talkBtn.disabled = true;
+
+      rec.onresult = async (event) => {
+        const transcript = event.results[0][0].transcript || '';
+        await processPrompt(transcript);
+      };
+
+      rec.onerror = (e) => {
+        setStatus(`Web Speech indisponible (${e.error}), fallback audio...`);
+      };
+
+      rec.onend = () => {
+        talkBtn.disabled = false;
+      };
+
+      rec.start();
+      return true;
+    }
+
+    async function toggleMediaRecorderFallback() {
+      if (!isRecording) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size > 0) mediaChunks.push(ev.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          const blob = new Blob(mediaChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+          try {
+            const text = await transcribeAudio(blob);
+            if (text) {
+              await processPrompt(text);
+            } else {
+              setStatus('Aucune transcription détectée.');
+            }
+          } catch (err) {
+            addBubble(`Erreur transcription: ${err.message}`, 'neo');
+            setStatus('Erreur transcription');
+          }
+        };
+
+        mediaRecorder.start();
+        isRecording = true;
+        talkBtn.textContent = '⏹️ Stop';
+        setStatus('Enregistrement audio...');
+      } else {
+        mediaRecorder.stop();
+        isRecording = false;
+        talkBtn.textContent = '🎤 Parler';
+      }
+    }
+
+    talkBtn.addEventListener('click', async () => {
+      try {
+        const started = startSpeechRecognition();
+        if (!started) {
+          await toggleMediaRecorderFallback();
+        }
+      } catch (err) {
+        addBubble(`Erreur micro: ${err.message}`, 'neo');
+        setStatus('Erreur micro');
+      }
+    });
+
+    sendBtn.addEventListener('click', async () => {
+      await processPrompt(textInputEl.value);
+    });
+
+    textInputEl.addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        await processPrompt(textInputEl.value);
+      }
+    });
+  </script>
+</body>
+</html>
