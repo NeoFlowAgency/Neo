@@ -5,8 +5,7 @@ param(
   [string]$OllamaHeavyModel = "qwen2.5:14b",
   [string]$OllamaUrl = "http://127.0.0.1:11434/api/generate",
   [int]$BackendPort = 5000,
-  [Alias("JarvisMode","Jarvis","Jarvice")]
-  [switch]$JarviceMode
+  [switch]$NoJarviceMode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -77,7 +76,7 @@ python .\robot_server.py
   Write-Host "[OK] Backend deja actif sur $BackendPort"
 }
 
-if ($JarviceMode) {
+if (-not $NoJarviceMode) {
   if (Test-JarviceRunning) {
     Write-Host "[OK] Jarvice deja actif"
   } else {
@@ -111,8 +110,8 @@ Write-Host "Mobile/LAN: http://<IP_PC>:$BackendPort"
 Write-Host "ESP32 URL : $Esp32Url"
 Write-Host "Models    : light=$OllamaLightModel | heavy=$OllamaHeavyModel"
 Write-Host "Logs      : $logsDir"
-if ($JarviceMode) {
+if (-not $NoJarviceMode) {
   Write-Host "Jarvice   : actif (wake word local)"
 } else {
-  Write-Host "Jarvice   : inactif (ajoute -JarviceMode)"
+  Write-Host "Jarvice   : inactif (-NoJarviceMode)"
 }

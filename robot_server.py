@@ -10,22 +10,23 @@ from collections import deque
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+import espeakng_loader
 import requests
 import soundfile as sf
 from flask import Flask, jsonify, request, send_from_directory, url_for
 from kokoro_onnx import Kokoro
 from kokoro_onnx.config import EspeakConfig
-import espeakng_loader
 
 
 ROOT_DIR = Path(__file__).resolve().parent
 AUDIO_DIR = Path(os.environ.get("AUDIO_DIR", ROOT_DIR / "audio_out"))
 DATA_DIR = Path(os.environ.get("JARVIS_DATA_DIR", ROOT_DIR / "data"))
 WEB_DIR = Path(os.environ.get("JARVIS_WEB_DIR", ROOT_DIR / "mobile_webapp"))
-CHAT_FILE = DATA_DIR / "chat_history.json"
 MODELS_DIR = Path(os.environ.get("JARVIS_MODELS_DIR", ROOT_DIR / "models"))
 KOKORO_DIR = MODELS_DIR / "kokoro"
 TMP_DIR = ROOT_DIR / "tmp"
+CHAT_FILE = DATA_DIR / "chat_history.json"
+LISTENER_STATE_FILE = DATA_DIR / "listener_state.json"
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
 OLLAMA_MODEL_LIGHT = os.environ.get("OLLAMA_MODEL_LIGHT", os.environ.get("OLLAMA_MODEL", "gemma4:e4b"))
@@ -36,10 +37,12 @@ SERVER_PORT = int(os.environ.get("PORT", "5000"))
 WHISPER_MODEL_NAME = os.environ.get("WHISPER_MODEL", "small")
 WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "auto")
 WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
-SERVO_CENTER_ACTION = os.environ.get("JARVIS_CENTER_ACTION", "center")
-KOKORO_VOICE = os.environ.get("KOKORO_VOICE", "bf_emma")
+
 KOKORO_SPEED = float(os.environ.get("KOKORO_SPEED", "1.0"))
-KOKORO_LANG = os.environ.get("KOKORO_LANG", "fr-fr")
+KOKORO_VOICE_EN = os.environ.get("KOKORO_VOICE_EN", "bf_emma")
+KOKORO_VOICE_FR = os.environ.get("KOKORO_VOICE_FR", "bf_emma")
+KOKORO_LANG_EN = os.environ.get("KOKORO_LANG_EN", "en-gb")
+KOKORO_LANG_FR = os.environ.get("KOKORO_LANG_FR", "fr-fr")
 KOKORO_MODEL_URL = os.environ.get(
     "KOKORO_MODEL_URL",
     "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx",
@@ -51,33 +54,50 @@ KOKORO_VOICES_URL = os.environ.get(
 
 ALLOWED_ACTIONS = {"turn_left", "turn_right", "nod", "center", "none"}
 ALLOWED_FACES = {"neutral", "listening", "thinking", "speaking", "happy", "sleepy"}
-HEAVY_MODEL_HINTS = (
-    "pourquoi",
-    "comment",
-    "explique",
-    "analyse",
-    "compare",
-    "résume",
-    "resume",
-    "code",
-    "script",
-    "plan",
-    "recherche",
-    "cherche",
+ALLOWED_LANGUAGES = {"fr", "en"}
+ALLOWED_LISTENING_MODES = {"wake", "continuous"}
+
+LIGHT_MODEL_HINTS = {
+    "bonjour", "salut", "hello", "hi", "tourne", "droite", "gauche", "centre",
+    "center", "heure", "date", "merci", "thanks", "thank", "time",
+}
+HEAVY_MODEL_HINTS = {
+    "pourquoi", "comment", "explique", "analyse", "compare", "résume", "resume",
+    "plan", "recherche", "cherche", "how", "why", "analyze", "compare", "explain",
+    "summarize", "research",
+}
+ENGLISH_HINTS = {
+    "hello", "hi", "please", "thanks", "thank", "what", "why", "how", "can", "could",
+    "would", "english", "turn", "left", "right", "center", "time", "today",
+}
+FRENCH_HINTS = {
+    "bonjour", "salut", "pourquoi", "comment", "peux", "heure", "francais", "français",
+    "tourne", "droite", "gauche", "centre", "merci", "aujourd", "veux",
+}
+ACTIVATE_CONTINUOUS_PATTERNS = (
+    r"\bactive (la )?(conversation|discussion|ecoute|écoute) continue\b",
+    r"\bpasse en mode (conversation|discussion|ecoute|écoute) continue\b",
+    r"\bmode (conversation|discussion|ecoute|écoute) continue\b",
 )
+DEACTIVATE_CONTINUOUS_PATTERNS = (
+    r"\bd[ée]sactive (la )?(conversation|discussion|ecoute|écoute) continue\b",
+    r"\bstop (la )?(conversation|discussion|ecoute|écoute) continue\b",
+    r"\bquitte le mode (conversation|discussion|ecoute|écoute) continue\b",
+    r"\breviens? en mode (wake|veille|réveil)\b",
+)
+LISTENER_ONLINE_TIMEOUT_SEC = 12
 
 SYSTEM_PROMPT = (
-    "Tu es Jarvis, l'assistant incarné d'un petit robot de bureau. "
-    "Ta personnalité est classe, brillante, utile, légèrement ironique, jamais lourde. "
-    "Tu réponds en français. Tu peux piloter le robot quand c'est pertinent. "
-    "Réponds UNIQUEMENT en JSON valide avec ce format exact: "
-    "{\"text\":\"...\",\"action\":\"turn_left|turn_right|nod|center|none\",\"face\":\"neutral|listening|thinking|speaking|happy|sleepy\"}. "
-    "Le champ text contient la réponse naturelle. "
-    "Utilise une action physique uniquement si l'utilisateur demande clairement un mouvement du robot "
-    "ou si cela apporte quelque chose à la scène. "
-    "Si rien n'est nécessaire, action='none'. "
-    "Choisis face='speaking' pour une réponse normale, 'happy' pour une réponse chaleureuse, "
-    "'thinking' pour une réflexion plus sérieuse, 'listening' seulement pour un état d'écoute, sinon 'neutral'."
+    "You are Jarvis, the embodied assistant of a small desk robot. "
+    "You are elegant, sharp, useful, and only occasionally lightly witty. "
+    "Always reply in the same language as the user. "
+    "Be genuinely helpful, perceptive, and smarter than a generic assistant, while staying concise unless depth is requested. "
+    "Return ONLY valid JSON with this exact shape: "
+    "{\"text\":\"...\",\"action\":\"turn_left|turn_right|nod|center|none\","
+    "\"face\":\"neutral|listening|thinking|speaking|happy|sleepy\",\"language\":\"fr|en\"}. "
+    "Use action only when a physical robot movement is explicitly useful. "
+    "Keep simple requests fast and intelligent. "
+    "For deeper requests, be more capable without becoming verbose."
 )
 
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
@@ -85,41 +105,65 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 KOKORO_DIR.mkdir(parents=True, exist_ok=True)
 TMP_DIR.mkdir(parents=True, exist_ok=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s",
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 logger = logging.getLogger("jarvis-local")
 
 app = Flask(__name__, static_folder=None)
-_tts_lock = threading.Lock()
-_kokoro_lock = threading.Lock()
-_stt_lock = threading.Lock()
-_whisper_model = None
-_kokoro_engine = None
 LOCAL_SESSION = requests.Session()
 LOCAL_SESSION.trust_env = False
 
+_tts_lock = threading.Lock()
+_kokoro_lock = threading.Lock()
+_stt_lock = threading.Lock()
+_kokoro_engine = None
+_whisper_model = None
+
+
+def read_json_file(path: Path, default):
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return default
+
+
+def write_json_file(path: Path, payload) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
+
 
 def load_chat_history() -> list[dict]:
-    try:
-        with CHAT_FILE.open("r", encoding="utf-8") as fh:
-            data = json.load(fh)
-        if isinstance(data, list):
-            return data
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
-    return []
+    data = read_json_file(CHAT_FILE, [])
+    return data if isinstance(data, list) else []
 
 
-chat_history: deque[dict] = deque(load_chat_history(), maxlen=200)
-runtime_logs: deque[dict] = deque(maxlen=150)
+def load_listener_state() -> dict:
+    default_state = {
+        "mode": "wake",
+        "last_ping": None,
+        "updated_at": int(time.time()),
+        "source": "default",
+    }
+    data = read_json_file(LISTENER_STATE_FILE, default_state)
+    if not isinstance(data, dict):
+        return default_state
+    merged = {**default_state, **data}
+    if merged["mode"] not in ALLOWED_LISTENING_MODES:
+        merged["mode"] = "wake"
+    return merged
+
+
+chat_history: deque[dict] = deque(load_chat_history(), maxlen=240)
+listener_state = load_listener_state()
+runtime_logs: deque[dict] = deque(maxlen=180)
 runtime_state = {
     "last_transcript": "",
     "last_reply": "",
     "last_model": OLLAMA_MODEL_LIGHT,
     "last_action": "none",
     "last_face": "neutral",
+    "last_language": "fr",
     "last_audio_url": None,
     "last_esp32_result": None,
     "last_error": None,
@@ -128,8 +172,11 @@ runtime_state = {
 
 
 def save_chat_history() -> None:
-    with CHAT_FILE.open("w", encoding="utf-8") as fh:
-        json.dump(list(chat_history), fh, ensure_ascii=False, indent=2)
+    write_json_file(CHAT_FILE, list(chat_history))
+
+
+def save_listener_state() -> None:
+    write_json_file(LISTENER_STATE_FILE, listener_state)
 
 
 def log_event(level: str, message: str, **extra) -> None:
@@ -143,6 +190,15 @@ def log_event(level: str, message: str, **extra) -> None:
     getattr(logger, level.lower(), logger.info)(message)
 
 
+def shorten_error(message: str, limit: int = 220) -> str:
+    return message if len(message) <= limit else message[: limit - 3] + "..."
+
+
+def ensure_runtime_temp_env() -> None:
+    os.environ["TEMP"] = str(TMP_DIR)
+    os.environ["TMP"] = str(TMP_DIR)
+
+
 def get_local_ip() -> str:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -152,11 +208,6 @@ def get_local_ip() -> str:
         return "127.0.0.1"
     finally:
         sock.close()
-
-
-def ensure_runtime_temp_env() -> None:
-    os.environ.setdefault("TEMP", str(TMP_DIR))
-    os.environ.setdefault("TMP", str(TMP_DIR))
 
 
 def replace_host(url: str, new_host: str, new_port: int) -> str:
@@ -184,64 +235,78 @@ def parse_json_body() -> dict:
     return {}
 
 
+def detect_language(text: str) -> str:
+    lowered = re.findall(r"[a-zA-ZÀ-ÿ']+", text.lower())
+    en_score = sum(token in ENGLISH_HINTS for token in lowered)
+    fr_score = sum(token in FRENCH_HINTS for token in lowered)
+    if re.search(r"\b(the|and|with|for|what|why|how)\b", text.lower()):
+        en_score += 2
+    if re.search(r"\b(le|la|les|des|est|que|quoi|pourquoi|comment)\b", text.lower()):
+        fr_score += 2
+    return "en" if en_score > fr_score else "fr"
+
+
+def is_listener_online() -> bool:
+    last_ping = listener_state.get("last_ping")
+    return bool(last_ping and (time.time() - float(last_ping) < LISTENER_ONLINE_TIMEOUT_SEC))
+
+
+def set_listening_mode(mode: str, source: str = "api") -> None:
+    if mode not in ALLOWED_LISTENING_MODES:
+        raise ValueError("invalid listening mode")
+    listener_state["mode"] = mode
+    listener_state["updated_at"] = int(time.time())
+    listener_state["source"] = source
+    save_listener_state()
+
+
+def touch_listener(source: str = "jarvis_mode") -> None:
+    listener_state["last_ping"] = time.time()
+    listener_state["updated_at"] = int(time.time())
+    listener_state["source"] = source
+    save_listener_state()
+
+
+def parse_mode_command(prompt: str, language: str) -> dict | None:
+    lowered = prompt.lower()
+    if any(re.search(pattern, lowered) for pattern in ACTIVATE_CONTINUOUS_PATTERNS):
+        set_listening_mode("continuous", source="voice")
+        text = (
+            "Continuous conversation is now active. Just keep talking."
+            if language == "en"
+            else "Le mode conversation continue est maintenant actif. Continue simplement à me parler."
+        )
+        return {"text": text, "action": "none", "face": "happy", "language": language, "model": "control"}
+    if any(re.search(pattern, lowered) for pattern in DEACTIVATE_CONTINUOUS_PATTERNS):
+        set_listening_mode("wake", source="voice")
+        text = (
+            "Continuous conversation is now disabled. Say Jarvis when you want me again."
+            if language == "en"
+            else "Le mode conversation continue est désactivé. Dis Jarvis quand tu veux me réveiller."
+        )
+        return {"text": text, "action": "none", "face": "neutral", "language": language, "model": "control"}
+    return None
+
+
 def choose_model(prompt: str) -> str:
-    prompt_lower = prompt.lower()
-    long_prompt = len(prompt.split()) >= 18 or len(prompt) >= 120
-    hinted = any(token in prompt_lower for token in HEAVY_MODEL_HINTS)
-    return OLLAMA_MODEL_HEAVY if (hinted or long_prompt) else OLLAMA_MODEL_LIGHT
+    lowered = prompt.lower()
+    words = prompt.split()
+    hinted_heavy = any(token in lowered for token in HEAVY_MODEL_HINTS)
+    hinted_light = any(token in lowered for token in LIGHT_MODEL_HINTS)
+    is_short = len(words) <= 7 and len(prompt) <= 60
+    is_simple_control = is_short and hinted_light and not hinted_heavy
+    return OLLAMA_MODEL_LIGHT if is_simple_control else OLLAMA_MODEL_HEAVY
 
 
-def download_file(url: str, destination: Path) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with LOCAL_SESSION.get(url, stream=True, timeout=120) as response:
-        response.raise_for_status()
-        with destination.open("wb") as fh:
-            for chunk in response.iter_content(chunk_size=1024 * 512):
-                if chunk:
-                    fh.write(chunk)
-
-
-def ensure_kokoro_assets() -> tuple[Path, Path]:
-    model_path = KOKORO_DIR / "kokoro-v1.0.onnx"
-    voices_path = KOKORO_DIR / "voices-v1.0.bin"
-
-    if not model_path.exists():
-        log_event("INFO", "Downloading Kokoro model file")
-        download_file(KOKORO_MODEL_URL, model_path)
-    if not voices_path.exists():
-        log_event("INFO", "Downloading Kokoro voice pack")
-        download_file(KOKORO_VOICES_URL, voices_path)
-
-    return model_path, voices_path
-
-
-def get_kokoro_engine() -> Kokoro:
-    global _kokoro_engine
-    with _kokoro_lock:
-        if _kokoro_engine is None:
-            ensure_runtime_temp_env()
-            model_path, voices_path = ensure_kokoro_assets()
-            espeak_config = EspeakConfig(
-                lib_path=espeakng_loader.get_library_path(),
-                data_path=espeakng_loader.get_data_path(),
-            )
-            _kokoro_engine = Kokoro(
-                str(model_path),
-                str(voices_path),
-                espeak_config=espeak_config,
-            )
-            log_event("INFO", f"Kokoro ready with voice={KOKORO_VOICE}")
-    return _kokoro_engine
-
-
-def build_ollama_prompt(prompt: str) -> str:
-    recent_turns = list(chat_history)[-8:]
+def build_ollama_prompt(prompt: str, language: str) -> str:
+    recent_turns = list(chat_history)[-10:]
     conversation = []
     for item in recent_turns:
-        role = "Utilisateur" if item.get("role") == "user" else "Jarvis"
+        role = "User" if item.get("role") == "user" else "Jarvis"
         conversation.append(f"{role}: {item.get('text', '').strip()}")
-    conversation.append(f"Utilisateur: {prompt}")
-    return f"{SYSTEM_PROMPT}\n\n" + "\n".join(conversation)
+    conversation.append(f"User: {prompt}")
+    language_hint = "English" if language == "en" else "French"
+    return f"{SYSTEM_PROMPT}\nReply language: {language_hint}.\n\n" + "\n".join(conversation)
 
 
 def extract_json_block(raw: str) -> dict:
@@ -258,72 +323,118 @@ def extract_json_block(raw: str) -> dict:
         obj = json.loads(match.group(0))
         if isinstance(obj, dict):
             return obj
-
     raise ValueError("LLM output is not valid JSON")
 
 
 def ask_ollama(prompt: str) -> dict:
+    language = detect_language(prompt)
     model = choose_model(prompt)
     payload = {
         "model": model,
         "stream": False,
-        "prompt": build_ollama_prompt(prompt),
-        "options": {"temperature": 0.45},
+        "prompt": build_ollama_prompt(prompt, language),
+        "options": {"temperature": 0.32},
     }
 
     runtime_state["last_model"] = model
-    log_event("INFO", f"Ollama request with model={model}")
+    runtime_state["last_language"] = language
+    log_event("INFO", f"Ollama request with model={model} language={language}")
 
     response = LOCAL_SESSION.post(OLLAMA_URL, json=payload, timeout=120)
     response.raise_for_status()
-    data = response.json()
-    raw_text = data.get("response", "").strip()
+    raw_text = response.json().get("response", "").strip()
     parsed = extract_json_block(raw_text)
 
-    text = str(parsed.get("text", "")).strip() or "Je suis prêt."
+    text = str(parsed.get("text", "")).strip() or ("I am ready." if language == "en" else "Je suis prêt.")
     action = str(parsed.get("action", "none")).strip()
     face = str(parsed.get("face", "speaking")).strip()
+    reply_language = str(parsed.get("language", language)).strip().lower()
 
     if action not in ALLOWED_ACTIONS:
         action = "none"
     if face not in ALLOWED_FACES:
         face = "speaking"
+    if reply_language not in ALLOWED_LANGUAGES:
+        reply_language = language
 
-    return {"text": text, "action": action, "face": face, "model": model}
+    return {
+        "text": text,
+        "action": action,
+        "face": face,
+        "language": reply_language,
+        "model": model,
+    }
 
 
-def generate_wav(text: str, filename: str) -> Path:
+def download_file(url: str, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with LOCAL_SESSION.get(url, stream=True, timeout=180) as response:
+        response.raise_for_status()
+        with destination.open("wb") as fh:
+            for chunk in response.iter_content(chunk_size=1024 * 512):
+                if chunk:
+                    fh.write(chunk)
+
+
+def ensure_kokoro_assets() -> tuple[Path, Path]:
+    model_path = KOKORO_DIR / "kokoro-v1.0.onnx"
+    voices_path = KOKORO_DIR / "voices-v1.0.bin"
+    if not model_path.exists():
+        log_event("INFO", "Downloading Kokoro model file")
+        download_file(KOKORO_MODEL_URL, model_path)
+    if not voices_path.exists():
+        log_event("INFO", "Downloading Kokoro voice pack")
+        download_file(KOKORO_VOICES_URL, voices_path)
+    return model_path, voices_path
+
+
+def get_kokoro_engine() -> Kokoro:
+    global _kokoro_engine
+    with _kokoro_lock:
+        if _kokoro_engine is None:
+            ensure_runtime_temp_env()
+            model_path, voices_path = ensure_kokoro_assets()
+            config = EspeakConfig(
+                lib_path=espeakng_loader.get_library_path(),
+                data_path=espeakng_loader.get_data_path(),
+            )
+            _kokoro_engine = Kokoro(str(model_path), str(voices_path), espeak_config=config)
+            log_event("INFO", "Kokoro ready")
+    return _kokoro_engine
+
+
+def get_tts_profile(language: str) -> tuple[str, str]:
+    if language == "en":
+        return KOKORO_VOICE_EN, KOKORO_LANG_EN
+    return KOKORO_VOICE_FR, KOKORO_LANG_FR
+
+
+def generate_wav(text: str, filename: str, language: str) -> Path:
     wav_path = AUDIO_DIR / filename
+    voice, kokoro_lang = get_tts_profile(language)
     with _tts_lock:
+        ensure_runtime_temp_env()
         kokoro = get_kokoro_engine()
         audio, sample_rate = kokoro.create(
             text,
-            voice=KOKORO_VOICE,
+            voice=voice,
             speed=KOKORO_SPEED,
-            lang=KOKORO_LANG,
+            lang=kokoro_lang,
         )
     sf.write(str(wav_path), audio, sample_rate)
-    log_event("INFO", f"WAV generated: {wav_path.name}")
+    log_event("INFO", f"WAV generated: {wav_path.name} voice={voice} lang={kokoro_lang}")
     return wav_path
 
 
 def send_esp32_json(endpoint: str, payload: dict | None = None, method: str = "POST", timeout: int = 8) -> dict:
     url = f"{ESP32_URL.rstrip('/')}/{endpoint.lstrip('/')}"
     try:
-        if method == "GET":
-            response = LOCAL_SESSION.get(url, timeout=timeout)
-        else:
-            response = LOCAL_SESSION.post(url, json=payload or {}, timeout=timeout)
+        response = LOCAL_SESSION.get(url, timeout=timeout) if method == "GET" else LOCAL_SESSION.post(url, json=payload or {}, timeout=timeout)
         try:
             parsed = response.json() if "application/json" in response.headers.get("Content-Type", "") else response.text[:240]
         except ValueError:
             parsed = response.text[:240]
-        return {
-            "ok": response.ok,
-            "status_code": response.status_code,
-            "endpoint": endpoint,
-            "data": parsed,
-        }
+        return {"ok": response.ok, "status_code": response.status_code, "endpoint": endpoint, "data": parsed}
     except requests.RequestException as exc:
         return {"ok": False, "status_code": None, "endpoint": endpoint, "error": str(exc)}
 
@@ -352,21 +463,14 @@ def get_whisper_model():
         if _whisper_model is None:
             from faster_whisper import WhisperModel
 
-            log_event(
-                "INFO",
-                f"Loading Whisper model={WHISPER_MODEL_NAME} device={WHISPER_DEVICE} compute={WHISPER_COMPUTE_TYPE}",
-            )
-            _whisper_model = WhisperModel(
-                WHISPER_MODEL_NAME,
-                device=WHISPER_DEVICE,
-                compute_type=WHISPER_COMPUTE_TYPE,
-            )
+            log_event("INFO", f"Loading Whisper model={WHISPER_MODEL_NAME} device={WHISPER_DEVICE} compute={WHISPER_COMPUTE_TYPE}")
+            _whisper_model = WhisperModel(WHISPER_MODEL_NAME, device=WHISPER_DEVICE, compute_type=WHISPER_COMPUTE_TYPE)
     return _whisper_model
 
 
 def transcribe_audio_file(file_path: Path) -> str:
     model = get_whisper_model()
-    segments, _info = model.transcribe(str(file_path), language="fr")
+    segments, _info = model.transcribe(str(file_path))
     return "".join(segment.text for segment in segments).strip()
 
 
@@ -383,14 +487,8 @@ def add_chat_entry(role: str, text: str, meta: dict | None = None) -> None:
     save_chat_history()
 
 
-def shorten_error(message: str, limit: int = 220) -> str:
-    return message if len(message) <= limit else message[: limit - 3] + "..."
-
-
 def ollama_health() -> dict:
-    url = OLLAMA_URL
-    if url.endswith("/api/generate"):
-        url = url[: -len("/api/generate")] + "/api/tags"
+    url = OLLAMA_URL[:-len("/api/generate")] + "/api/tags" if OLLAMA_URL.endswith("/api/generate") else OLLAMA_URL
     try:
         response = LOCAL_SESSION.get(url, timeout=3)
         return {"ok": response.ok, "status_code": response.status_code}
@@ -404,21 +502,19 @@ def esp32_health() -> dict:
 
 def current_status() -> dict:
     return {
-        "jarvis": {
-            "ok": True,
-            "host": SERVER_HOST,
-            "port": SERVER_PORT,
-            "local_ip": get_local_ip(),
-        },
+        "jarvis": {"ok": True, "host": SERVER_HOST, "port": SERVER_PORT, "local_ip": get_local_ip()},
         "ollama": ollama_health(),
         "esp32": esp32_health(),
+        "listener": {
+            "mode": listener_state["mode"],
+            "online": is_listener_online(),
+            "last_ping": listener_state.get("last_ping"),
+            "source": listener_state.get("source"),
+        },
         "state": runtime_state,
         "history_count": len(chat_history),
-        "recent_logs": list(runtime_logs)[-20:],
-        "models": {
-            "light": OLLAMA_MODEL_LIGHT,
-            "heavy": OLLAMA_MODEL_HEAVY,
-        },
+        "recent_logs": list(runtime_logs)[-24:],
+        "models": {"light": OLLAMA_MODEL_LIGHT, "heavy": OLLAMA_MODEL_HEAVY},
     }
 
 
@@ -450,6 +546,39 @@ def api_history():
     return jsonify(list(chat_history))
 
 
+@app.route("/api/listening-mode", methods=["GET", "POST", "OPTIONS"])
+def api_listening_mode():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if request.method == "GET":
+        return jsonify({
+            "ok": True,
+            "mode": listener_state["mode"],
+            "listener_online": is_listener_online(),
+            "last_ping": listener_state.get("last_ping"),
+        })
+
+    body = parse_json_body()
+    mode = str(body.get("mode", "")).strip()
+    if mode not in ALLOWED_LISTENING_MODES:
+        return jsonify({"error": "Mode d'écoute invalide"}), 400
+    set_listening_mode(mode, source="dashboard")
+    log_event("INFO", f"Listening mode changed to {mode}")
+    return jsonify({"ok": True, "mode": mode, "listener_online": is_listener_online()})
+
+
+@app.route("/api/listener/ping", methods=["POST", "OPTIONS"])
+def api_listener_ping():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = parse_json_body()
+    mode = str(body.get("mode", listener_state["mode"])).strip()
+    if mode in ALLOWED_LISTENING_MODES:
+        listener_state["mode"] = mode
+    touch_listener(source=str(body.get("source", "jarvis_mode")))
+    return jsonify({"ok": True, "mode": listener_state["mode"]})
+
+
 @app.route("/api/action", methods=["POST", "OPTIONS"])
 def api_action():
     if request.method == "OPTIONS":
@@ -460,9 +589,7 @@ def api_action():
     if action not in ALLOWED_ACTIONS:
         return jsonify({"error": "Action invalide"}), 400
 
-    result = send_robot_action(action)
-    if action == "none":
-        result = {"ok": True, "endpoint": "action", "data": {"action": "none"}}
+    result = send_robot_action(action) if action != "none" else {"ok": True, "endpoint": "action", "data": {"action": "none"}}
     log_event("INFO", f"Manual robot action: {action}")
     return jsonify({"ok": True, "action": action, "robot": result})
 
@@ -492,34 +619,36 @@ def api_ask():
     if not prompt:
         return jsonify({"error": "'prompt' est obligatoire"}), 400
 
+    input_language = detect_language(prompt)
     runtime_state["last_transcript"] = prompt
     runtime_state["last_error"] = None
     runtime_state["last_interaction_at"] = int(time.time())
-    add_chat_entry("user", prompt)
-    send_robot_face("thinking")
+    runtime_state["last_language"] = input_language
+    add_chat_entry("user", prompt, {"language": input_language})
 
-    try:
-        result = ask_ollama(prompt)
-    except Exception as exc:
-        runtime_state["last_error"] = shorten_error(str(exc))
-        log_event("ERROR", f"Ollama failed: {exc}")
-        result = {
-            "text": "Je n'ai pas réussi à traiter ça correctement.",
-            "action": "none",
-            "face": "neutral",
-            "model": runtime_state["last_model"],
-        }
+    control_result = parse_mode_command(prompt, input_language)
+    if control_result:
+        result = control_result
+    else:
+        send_robot_face("thinking")
+        try:
+            result = ask_ollama(prompt)
+        except Exception as exc:
+            runtime_state["last_error"] = shorten_error(str(exc))
+            log_event("ERROR", f"Ollama failed: {exc}")
+            result = {
+                "text": "I could not process that properly." if input_language == "en" else "Je n'ai pas réussi à traiter ça correctement.",
+                "action": "none",
+                "face": "neutral",
+                "language": input_language,
+                "model": runtime_state["last_model"],
+            }
 
     audio_url = None
     try:
         unique_name = f"response_{int(time.time())}_{uuid.uuid4().hex[:6]}.wav"
-        generate_wav(result["text"], unique_name)
-        host_ip = get_local_ip()
-        audio_url = replace_host(
-            url_for("serve_audio", filename=unique_name, _external=True),
-            host_ip,
-            SERVER_PORT,
-        )
+        generate_wav(result["text"], unique_name, result["language"])
+        audio_url = replace_host(url_for("serve_audio", filename=unique_name, _external=True), get_local_ip(), SERVER_PORT)
     except Exception as exc:
         runtime_state["last_error"] = shorten_error(str(exc))
         log_event("ERROR", f"TTS failed: {exc}")
@@ -540,6 +669,7 @@ def api_ask():
     runtime_state["last_reply"] = result["text"]
     runtime_state["last_action"] = result["action"]
     runtime_state["last_face"] = result["face"]
+    runtime_state["last_language"] = result["language"]
     runtime_state["last_audio_url"] = audio_url
     runtime_state["last_esp32_result"] = esp32_result
 
@@ -550,10 +680,11 @@ def api_ask():
             "action": result["action"],
             "face": result["face"],
             "model": result["model"],
+            "language": result["language"],
             "audio_url": audio_url,
         },
     )
-    log_event("INFO", f"Jarvis reply sent with model={result['model']} action={result['action']}")
+    log_event("INFO", f"Jarvis reply sent with model={result['model']} action={result['action']} language={result['language']}")
 
     return jsonify(
         {
@@ -561,6 +692,7 @@ def api_ask():
             "text": result["text"],
             "action": result["action"],
             "face": result["face"],
+            "language": result["language"],
             "model": result["model"],
             "audio_url": audio_url,
             "esp32": esp32_result,
@@ -572,7 +704,6 @@ def api_ask():
 def api_transcribe():
     if request.method == "OPTIONS":
         return ("", 204)
-
     if "audio" not in request.files:
         return jsonify({"error": "Fichier audio manquant (champ 'audio')."}), 400
 
@@ -585,10 +716,11 @@ def api_transcribe():
         audio_file.save(temp_path)
         text = transcribe_audio_file(temp_path)
         runtime_state["last_transcript"] = text
+        runtime_state["last_language"] = detect_language(text) if text else runtime_state["last_language"]
         log_event("INFO", f"Audio transcribed: {text[:80]}")
-        return jsonify({"ok": True, "text": text})
+        return jsonify({"ok": True, "text": text, "language": detect_language(text) if text else "fr"})
     except Exception as exc:
-        runtime_state["last_error"] = str(exc)
+        runtime_state["last_error"] = shorten_error(str(exc))
         log_event("ERROR", f"STT transcription failed: {exc}")
         return jsonify({"error": f"Transcription échouée: {exc}"}), 500
     finally:
@@ -605,5 +737,6 @@ def serve_audio(filename: str):
 
 
 if __name__ == "__main__":
+    ensure_runtime_temp_env()
     log_event("INFO", f"Starting Jarvis local server on {SERVER_HOST}:{SERVER_PORT}")
     app.run(host=SERVER_HOST, port=SERVER_PORT, debug=False)

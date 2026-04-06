@@ -7,7 +7,6 @@ logs/
 data/
 models/
 tmp/
-wokwi/neo_http_robot/
 
 .DS_Store
 Thumbs.db
