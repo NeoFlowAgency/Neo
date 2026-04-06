@@ -123,19 +123,19 @@ def generate_wav(text: str, filename: str = "response.wav") -> Path:
     return wav_path
 
 
-def send_action_to_esp32(action: str) -> dict:
-    url = f"{ESP32_URL.rstrip('/')}/action"
-    payload = {"action": action}
+def send_esp32_payload(endpoint: str, payload: dict, timeout: int = 6) -> dict:
+    url = f"{ESP32_URL.rstrip('/')}/{endpoint.lstrip('/')}"
     try:
-        r = requests.post(url, json=payload, timeout=3)
+        r = requests.post(url, json=payload, timeout=timeout)
         return {
             "ok": r.ok,
             "status_code": r.status_code,
             "response": r.text[:120],
+            "endpoint": endpoint,
         }
     except requests.RequestException as exc:
         logger.error("ESP32 call failed: %s", exc)
-        return {"ok": False, "status_code": None, "error": str(exc)}
+        return {"ok": False, "status_code": None, "error": str(exc), "endpoint": endpoint}
 
 
 def get_whisper_model():
@@ -203,16 +203,26 @@ def ask_route():
             "error": str(exc),
         }
 
-    # Keep a stable filename for simple clients, plus a unique backup for logs/debug.
+    # Keep compatibility file + unique file (prevents browser caching stale audio).
     generate_wav(result["text"], "response.wav")
     unique_name = f"response_{int(time.time())}_{uuid.uuid4().hex[:6]}.wav"
     generate_wav(result["text"], unique_name)
 
-    esp32_result = send_action_to_esp32(result["action"])
-    logger.info("Action '%s' sent to ESP32: %s", result["action"], esp32_result)
-
     host_ip = get_local_ip()
-    audio_url = f"http://{host_ip}:{SERVER_PORT}{url_for('serve_audio', filename='response.wav')}"
+    audio_url = f"http://{host_ip}:{SERVER_PORT}{url_for('serve_audio', filename=unique_name)}"
+
+    # Try full speak endpoint first (action + wav playback on robot speaker).
+    speak_payload = {
+        "action": result["action"],
+        "text": result["text"],
+        "audio_url": audio_url,
+    }
+    esp32_result = send_esp32_payload("speak", speak_payload, timeout=12)
+    if not esp32_result.get("ok"):
+        # Fallback for older firmware that only supports /action.
+        esp32_result = send_esp32_payload("action", {"action": result["action"]}, timeout=4)
+
+    logger.info("Action '%s' sent to ESP32: %s", result["action"], esp32_result)
     return jsonify({
         "text": result["text"],
         "action": result["action"],

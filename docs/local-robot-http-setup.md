@@ -184,8 +184,10 @@ Tu peux aussi vérifier la santé:
 curl http://ESP32_IP/health
 ```
 
-> Note: dans ce firmware HTTP minimal, l'écran OLED n'est pas piloté.
-> Il peut rester noir tant que tu n'ajoutes pas une logique d'affichage.
+> Ce firmware gère maintenant:
+> - servo (`/action`),
+> - lecture audio WAV depuis URL (`/speak`),
+> - affichage OLED simple (texte/action).
 
 ## 9) Check-list de debug (si ça ne marche pas)
 
@@ -235,3 +237,9 @@ Pour stopper aussi Ollama:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\stop_robot.ps1 -StopOllama
 ```
+
+## 12) Problèmes connus et corrections rapides
+
+- **Le robot rejoue toujours la même phrase**: vérifie que le backend est à jour (il renvoie maintenant un URL audio unique pour éviter le cache navigateur).
+- **Le son sort du casque PC et pas du robot**: le backend envoie désormais `POST /speak` à l'ESP32 avec `audio_url`; reflasher `wokwi/neo_http_robot.ino` est obligatoire pour cette fonction.
+- **OLED noir**: vérifie les branchements SDA=21, SCL=23, VCC=3V3, GND commun.
