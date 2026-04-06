@@ -3,762 +3,126 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Jarvis Dashboard</title>
+  <title>Jarvis Core</title>
   <style>
-    :root {
-      --bg: #07111b;
-      --bg-soft: #0c1825;
-      --panel: rgba(15, 29, 43, 0.92);
-      --panel-line: rgba(126, 199, 255, 0.16);
-      --text: #edf5fb;
-      --muted: #94a9bc;
-      --accent: #7ec7ff;
-      --accent-strong: #33a4ff;
-      --good: #6fe0aa;
-      --warn: #ffd27d;
-      --bad: #ff8f8f;
-      --radius: 18px;
-      --shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: "Segoe UI", sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(circle at top, rgba(51, 164, 255, 0.18), transparent 30%),
-        linear-gradient(180deg, #05101a 0%, #0a1622 100%);
-    }
-
-    .app {
-      max-width: 1320px;
-      margin: 0 auto;
-      padding: 24px;
-      display: grid;
-      gap: 18px;
-    }
-
-    .hero, .panel {
-      border-radius: 24px;
-      background: linear-gradient(135deg, rgba(17, 33, 49, 0.95), rgba(9, 19, 31, 0.94));
-      border: 1px solid var(--panel-line);
-      box-shadow: var(--shadow);
-    }
-
-    .hero {
-      padding: 24px;
-      display: flex;
-      justify-content: space-between;
-      gap: 18px;
-      flex-wrap: wrap;
-      align-items: flex-end;
-    }
-
-    .eyebrow {
-      color: var(--accent);
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      font-size: 12px;
-      margin-bottom: 8px;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: clamp(32px, 6vw, 56px);
-      line-height: 0.96;
-      letter-spacing: -0.04em;
-    }
-
-    .subtitle {
-      margin-top: 10px;
-      max-width: 720px;
-      color: var(--muted);
-      line-height: 1.5;
-    }
-
-    .hero-status {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .status-pill {
-      min-width: 132px;
-      padding: 10px 14px;
-      border-radius: 999px;
-      border: 1px solid var(--panel-line);
-      background: rgba(6, 13, 20, 0.74);
-    }
-
-    .status-pill strong {
-      display: block;
-      font-size: 12px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-
-    .good { color: var(--good); }
-    .warn { color: var(--warn); }
-    .bad { color: var(--bad); }
-
-    .grid {
-      display: grid;
-      grid-template-columns: 1.2fr 0.92fr;
-      gap: 18px;
-    }
-
-    .stack {
-      display: grid;
-      gap: 18px;
-    }
-
-    .panel {
-      padding: 18px;
-      backdrop-filter: blur(10px);
-    }
-
-    .panel h2 {
-      margin: 0 0 6px;
-      font-size: 18px;
-    }
-
-    .panel p {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.45;
-    }
-
-    .log {
-      margin-top: 16px;
-      display: grid;
-      gap: 10px;
-      max-height: 470px;
-      overflow: auto;
-      padding-right: 4px;
-    }
-
-    .entry {
-      padding: 12px 14px;
-      border-radius: 14px;
-      background: rgba(5, 12, 18, 0.8);
-      border: 1px solid rgba(126, 199, 255, 0.1);
-    }
-
-    .entry.user {
-      border-color: rgba(126, 199, 255, 0.28);
-    }
-
-    .entry.assistant {
-      border-color: rgba(111, 224, 170, 0.22);
-    }
-
-    .entry-top {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 8px;
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    .entry-text {
-      white-space: pre-wrap;
-      line-height: 1.5;
-    }
-
-    .meta {
-      margin-top: 8px;
-      color: var(--accent);
-      font-size: 13px;
-    }
-
-    .composer {
-      margin-top: 16px;
-      display: grid;
-      gap: 12px;
-    }
-
-    textarea {
-      width: 100%;
-      min-height: 110px;
-      resize: vertical;
-      padding: 14px;
-      border-radius: 16px;
-      border: 1px solid rgba(126, 199, 255, 0.14);
-      background: rgba(4, 10, 16, 0.8);
-      color: var(--text);
-      font: inherit;
-    }
-
-    .row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    button {
-      border: 0;
-      cursor: pointer;
-      border-radius: 999px;
-      padding: 12px 16px;
-      color: #03111d;
-      font-weight: 700;
-      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-      box-shadow: 0 10px 24px rgba(51, 164, 255, 0.18);
-    }
-
-    button.secondary {
-      color: var(--text);
-      background: rgba(12, 25, 37, 0.92);
-      border: 1px solid rgba(126, 199, 255, 0.16);
-      box-shadow: none;
-    }
-
-    button.active {
-      background: linear-gradient(135deg, #8fe6c2, #54c991);
-      color: #052014;
-    }
-
-    button:disabled {
-      opacity: 0.55;
-      cursor: not-allowed;
-    }
-
-    .section {
-      margin-top: 16px;
-    }
-
-    .section-label {
-      margin-bottom: 10px;
-      font-size: 12px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    .button-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-    }
-
-    .facts {
-      margin-top: 14px;
-      display: grid;
-      gap: 10px;
-    }
-
-    .fact {
-      padding: 12px 14px;
-      border-radius: 14px;
-      background: rgba(7, 14, 22, 0.74);
-      border: 1px solid rgba(126, 199, 255, 0.1);
-    }
-
-    .fact strong {
-      display: block;
-      margin-bottom: 6px;
-      color: var(--accent);
-      font-size: 12px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-    }
-
-    .status-line {
-      margin-top: 12px;
-      min-height: 20px;
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    audio {
-      width: 100%;
-      margin-top: 10px;
-    }
-
-    @media (max-width: 1024px) {
-      .grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    @media (max-width: 640px) {
-      .app {
-        padding: 14px;
-      }
-
-      .button-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-    }
+    :root{--bg:#03070d;--bg2:#07111c;--panel:rgba(10,18,30,.74);--line:rgba(97,187,255,.18);--text:#edf7ff;--muted:#8ca4bb;--accent:#7ad7ff;--accent2:#3db7ff;--accent3:#9af0e7;--good:#8df0bf;--warn:#ffd27a;--bad:#ff908d;--shadow:0 24px 60px rgba(0,0,0,.38)}
+    *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% 18%,rgba(61,183,255,.18),transparent 22%),radial-gradient(circle at 50% 100%,rgba(61,183,255,.08),transparent 34%),linear-gradient(180deg,#02060b 0%,#07111c 55%,#03070d 100%);color:var(--text);font-family:"Segoe UI Variable","Bahnschrift","Segoe UI",sans-serif}
+    body::before{content:"";position:fixed;inset:0;background-image:linear-gradient(rgba(122,215,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(122,215,255,.03) 1px,transparent 1px);background-size:44px 44px;mask-image:radial-gradient(circle at center,black 44%,transparent 84%);pointer-events:none}
+    .app{max-width:1480px;margin:0 auto;padding:24px;display:grid;gap:18px}.panel{background:linear-gradient(180deg,rgba(11,21,34,.88),rgba(7,13,24,.76));border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow);backdrop-filter:blur(12px)}
+    .topbar{padding:16px 18px;display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}.brand{display:flex;align-items:center;gap:14px}.mark{width:46px;height:46px;border-radius:50%;background:radial-gradient(circle at 35% 35%,rgba(154,240,231,.95),transparent 18%),radial-gradient(circle,rgba(61,183,255,.36),rgba(61,183,255,.05) 58%,transparent 68%);border:1px solid rgba(122,215,255,.35);box-shadow:inset 0 0 24px rgba(61,183,255,.3),0 0 32px rgba(61,183,255,.18)}
+    .eyebrow{font-size:11px;letter-spacing:.26em;text-transform:uppercase;color:var(--accent);margin-bottom:4px}.title{margin:0;font-size:clamp(26px,5vw,42px);letter-spacing:-.05em;line-height:.92}.subtitle{margin-top:6px;color:var(--muted);max-width:740px;line-height:1.45;font-size:14px}
+    .chips{display:flex;gap:10px;flex-wrap:wrap}.chip{min-width:116px;padding:10px 12px;border-radius:999px;background:rgba(4,10,17,.72);border:1px solid rgba(122,215,255,.14)}.chip label{display:block;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+    .good{color:var(--good)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+    .layout{display:grid;grid-template-columns:1.25fr .92fr;gap:18px;align-items:start}.core{padding:22px;min-height:760px;display:grid;gap:18px;align-content:start}.stage{position:relative;min-height:460px;border-radius:28px;overflow:hidden;background:radial-gradient(circle at 50% 50%,rgba(17,51,84,.55),transparent 33%),radial-gradient(circle at 50% 50%,rgba(61,183,255,.08),transparent 58%),linear-gradient(180deg,rgba(4,12,20,.92),rgba(3,8,14,.92));border:1px solid rgba(122,215,255,.12)}
+    #orbCanvas{width:100%;height:460px;display:block}.badge{position:absolute;top:18px;left:18px;padding:10px 14px;border-radius:999px;background:rgba(4,10,17,.7);border:1px solid rgba(122,215,255,.14);color:var(--accent);font-size:12px;letter-spacing:.14em;text-transform:uppercase}
+    .meta{position:absolute;right:18px;bottom:18px;display:grid;gap:8px;width:min(360px,calc(100% - 36px))}.card{padding:14px 16px;border-radius:18px;background:rgba(4,10,17,.66);border:1px solid rgba(122,215,255,.14)}.card label{display:block;margin-bottom:8px;color:var(--muted);font-size:11px;letter-spacing:.16em;text-transform:uppercase}.card .text{line-height:1.5;font-size:15px;min-height:24px;white-space:pre-wrap}
+    .composer{display:grid;gap:12px}textarea{width:100%;min-height:108px;resize:vertical;padding:16px;border-radius:20px;border:1px solid rgba(122,215,255,.14);background:rgba(4,10,17,.76);color:var(--text);font:inherit}
+    button{appearance:none;border:0;cursor:pointer;border-radius:999px;padding:12px 16px;color:#041019;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 14px 30px rgba(61,183,255,.18)}button.secondary{background:rgba(9,17,29,.92);color:var(--text);border:1px solid rgba(122,215,255,.16);box-shadow:none}button.active{background:linear-gradient(135deg,#9af0e7,#65daff);color:#031015}button:disabled{opacity:.58;cursor:not-allowed}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.status{min-height:22px;color:var(--muted);font-size:14px}
+    .side{display:grid;gap:18px}.side .panel{padding:18px}.side h2{margin:0 0 6px;font-size:18px}.side p{margin:0;color:var(--muted);line-height:1.45;font-size:14px}
+    .grid{margin-top:16px;display:grid;gap:14px}.ctl{padding:14px;border-radius:18px;background:rgba(4,10,17,.55);border:1px solid rgba(122,215,255,.11)}.ctl label{display:block;margin-bottom:10px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+    .range{min-width:52px;text-align:right;color:var(--accent);font-variant-numeric:tabular-nums}input[type=range]{width:100%;accent-color:var(--accent2)}
+    .history{margin-top:14px;max-height:280px;overflow:auto;display:grid;gap:10px}.entry{padding:12px 14px;border-radius:16px;background:rgba(4,10,17,.58);border:1px solid rgba(122,215,255,.1)}.entry.user{border-color:rgba(122,215,255,.2)}.entry.assistant{border-color:rgba(154,240,231,.18)}.entry-top{display:flex;justify-content:space-between;gap:10px;margin-bottom:8px;color:var(--muted);font-size:11px;letter-spacing:.12em;text-transform:uppercase}.entry-text{white-space:pre-wrap;line-height:1.5;font-size:14px}.entry-meta{margin-top:8px;color:var(--accent);font-size:12px}
+    .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.tiny{font-size:12px;color:var(--muted)}
+    @media (max-width:1120px){.layout{grid-template-columns:1fr}.core{min-height:auto}}@media (max-width:640px){.app{padding:14px}.three,.two{grid-template-columns:1fr 1fr}.meta{position:static;width:auto;padding:14px}}
   </style>
 </head>
 <body>
   <div class="app">
-    <section class="hero">
-      <div>
-        <div class="eyebrow">Jarvis V1 / Local Control</div>
-        <h1>Jarvis,<br />toujours a l’ecoute.</h1>
-        <p class="subtitle">
-          Wake word local, conversation continue, pilotage du robot et historique unifie.
-          L’appli sert surtout a voir l’etat et a reprendre la main quand tu veux.
-        </p>
-      </div>
-      <div class="hero-status">
-        <div class="status-pill">
-          <strong>Jarvis</strong>
-          <div id="jarvisStatus" class="warn">Verification...</div>
-        </div>
-        <div class="status-pill">
-          <strong>Ollama</strong>
-          <div id="ollamaStatus" class="warn">Verification...</div>
-        </div>
-        <div class="status-pill">
-          <strong>ESP32</strong>
-          <div id="esp32Status" class="warn">Verification...</div>
-        </div>
-        <div class="status-pill">
-          <strong>Listener</strong>
-          <div id="listenerStatus" class="warn">Verification...</div>
-        </div>
+    <section class="panel topbar">
+      <div class="brand"><div class="mark"></div><div><div class="eyebrow">Jarvis Local Core</div><h1 class="title">Jarvis, version bureau.</h1><div class="subtitle">Presence vivante, transcription locale, controle fin du robot et modes d'ecoute propres.</div></div></div>
+      <div class="chips">
+        <div class="chip"><label>Jarvis</label><span id="jarvisStatus" class="warn">Verification...</span></div>
+        <div class="chip"><label>Ollama</label><span id="ollamaStatus" class="warn">Verification...</span></div>
+        <div class="chip"><label>ESP32</label><span id="esp32Status" class="warn">Verification...</span></div>
+        <div class="chip"><label>Listener</label><span id="listenerStatus" class="warn">Verification...</span></div>
       </div>
     </section>
 
-    <section class="grid">
-      <div class="panel">
-        <h2>Conversation</h2>
-        <p>Tu peux ecrire, parler depuis le navigateur, ou juste laisser le listener PC tourner avec “Jarvis”.</p>
-
-        <div id="history" class="log"></div>
-
+    <section class="layout">
+      <section class="panel core">
+        <div class="stage">
+          <canvas id="orbCanvas" width="1200" height="720"></canvas>
+          <div class="badge" id="stateBadge">Idle</div>
+          <div class="meta">
+            <div class="card"><label>Transcription</label><div id="transcriptLive" class="text">Aucune parole pour l'instant.</div></div>
+            <div class="card"><label>Reponse de Jarvis</label><div id="replyLive" class="text">Pret a repondre.</div></div>
+          </div>
+        </div>
         <div class="composer">
-          <textarea id="promptInput" placeholder="Ecris ici ou utilise le micro du navigateur..."></textarea>
+          <textarea id="promptInput" placeholder="Ecris ici, ou passe par le micro navigateur pour envoyer une requete a Jarvis..."></textarea>
           <div class="row">
-            <button id="sendBtn">Envoyer a Jarvis</button>
+            <button id="sendBtn">Envoyer</button>
             <button id="micBtn" class="secondary">Parler</button>
+            <button id="stopBtn" class="secondary">Stop</button>
             <button id="refreshBtn" class="secondary">Rafraichir</button>
           </div>
-          <div id="statusLine" class="status-line">Pret.</div>
-          <audio id="audioPlayer" controls></audio>
+          <div id="statusLine" class="status">Pret.</div>
         </div>
-      </div>
+      </section>
 
-      <div class="stack">
-        <div class="panel">
+      <aside class="side">
+        <section class="panel">
           <h2>Ecoute</h2>
-          <p>Choisis si Jarvis attend un wake word, ou s’il reste en conversation continue.</p>
-
-          <div class="section">
-            <div class="section-label">Mode d’ecoute</div>
-            <div class="row">
-              <button id="wakeModeBtn" class="secondary">Wake Word</button>
-              <button id="continuousModeBtn" class="secondary">Continu</button>
-            </div>
+          <p>Choisis si Jarvis attend son nom, reste en conversation continue, ou part en veille.</p>
+          <div class="grid">
+            <div class="ctl"><label>Mode</label><div class="row"><button id="wakeModeBtn" class="secondary">Wake</button><button id="continuousModeBtn" class="secondary">Continu</button><button id="sleepModeBtn" class="secondary">Veille</button></div></div>
+            <div class="ctl"><label>Volume</label><div class="row"><input id="volumeSlider" type="range" min="0.12" max="1.15" step="0.01" value="0.72" /><div id="volumeValue" class="range">72%</div></div></div>
+            <div class="ctl"><label>Angle de tete</label><div class="row"><input id="headAngleSlider" type="range" min="20" max="160" step="1" value="90" /><div id="headAngleValue" class="range">90°</div></div><div class="tiny">Glisse pour piloter la tete librement.</div></div>
           </div>
+        </section>
 
-          <div class="section">
-            <div class="section-label">Volume</div>
-            <div class="row" style="align-items:center;">
-              <input id="volumeSlider" type="range" min="0.2" max="1.2" step="0.02" value="0.72" style="width:100%;" />
-            </div>
-          </div>
-
-          <div class="facts">
-            <div class="fact">
-              <strong>Mode actuel</strong>
-              <div id="factListeningMode">-</div>
-            </div>
-            <div class="fact">
-              <strong>Listener local</strong>
-              <div id="factListenerOnline">-</div>
-            </div>
-            <div class="fact">
-              <strong>Derniere langue</strong>
-              <div id="factLanguage">-</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel">
+        <section class="panel">
           <h2>Robot</h2>
-          <p>Tests manuels pour verifier rapidement le servo et les yeux.</p>
-
-          <div class="section">
-            <div class="section-label">Mouvements</div>
-            <div class="button-grid">
-              <button data-action="turn_left" class="secondary">Gauche</button>
-              <button data-action="center" class="secondary">Centre</button>
-              <button data-action="turn_right" class="secondary">Droite</button>
-              <button data-action="nod" class="secondary">Salut</button>
-            </div>
+          <p>Tests rapides pour verifier servo et yeux sans passer par une conversation complete.</p>
+          <div class="grid">
+            <div class="ctl"><label>Actions rapides</label><div class="three"><button data-action="turn_left" class="secondary">Gauche</button><button data-action="center" class="secondary">Centre</button><button data-action="turn_right" class="secondary">Droite</button><button data-action="nod" class="secondary">Salut</button></div></div>
+            <div class="ctl"><label>Expressions</label><div class="three"><button data-face="neutral" class="secondary">Neutre</button><button data-face="listening" class="secondary">Ecoute</button><button data-face="thinking" class="secondary">Think</button><button data-face="speaking" class="secondary">Parle</button><button data-face="happy" class="secondary">Content</button><button data-face="sleepy" class="secondary">Sommeil</button></div></div>
           </div>
+        </section>
 
-          <div class="section">
-            <div class="section-label">Yeux</div>
-            <div class="button-grid">
-              <button data-face="neutral" class="secondary">Neutre</button>
-              <button data-face="listening" class="secondary">Ecoute</button>
-              <button data-face="thinking" class="secondary">Reflexion</button>
-              <button data-face="speaking" class="secondary">Parole</button>
-              <button data-face="happy" class="secondary">Content</button>
-              <button data-face="sleepy" class="secondary">Somnolent</button>
-            </div>
+        <section class="panel">
+          <h2>Etat courant</h2>
+          <p>Resume du dernier echange et de ce que Jarvis pense etre en train de faire.</p>
+          <div class="grid">
+            <div class="ctl"><label>Modele</label><div id="factModel">-</div></div>
+            <div class="ctl"><label>Langue</label><div id="factLanguage">-</div></div>
+            <div class="ctl"><label>Action / visage</label><div id="factAction">-</div></div>
+            <div class="ctl"><label>Listener</label><div id="factListener">-</div></div>
           </div>
-        </div>
+        </section>
 
-        <div class="panel">
-          <h2>Etat</h2>
-          <p>Resume rapide du dernier echange traite par Jarvis.</p>
-
-          <div class="facts">
-            <div class="fact">
-              <strong>Derniere transcription</strong>
-              <div id="factTranscript">-</div>
-            </div>
-            <div class="fact">
-              <strong>Derniere reponse</strong>
-              <div id="factReply">-</div>
-            </div>
-            <div class="fact">
-              <strong>Modele utilise</strong>
-              <div id="factModel">-</div>
-            </div>
-            <div class="fact">
-              <strong>Action / visage</strong>
-              <div id="factAction">-</div>
-            </div>
-          </div>
-        </div>
-      </div>
+        <section class="panel">
+          <h2>Historique</h2>
+          <p>Les derniers echanges apparaissent ici pour suivre les tests en un coup d'oeil.</p>
+          <div id="history" class="history"></div>
+        </section>
+      </aside>
     </section>
   </div>
-
   <script>
-    const historyEl = document.getElementById("history");
-    const promptInput = document.getElementById("promptInput");
-    const sendBtn = document.getElementById("sendBtn");
-    const micBtn = document.getElementById("micBtn");
-    const refreshBtn = document.getElementById("refreshBtn");
-    const wakeModeBtn = document.getElementById("wakeModeBtn");
-    const continuousModeBtn = document.getElementById("continuousModeBtn");
-    const volumeSlider = document.getElementById("volumeSlider");
-    const statusLine = document.getElementById("statusLine");
-    const audioPlayer = document.getElementById("audioPlayer");
-
-    const jarvisStatusEl = document.getElementById("jarvisStatus");
-    const ollamaStatusEl = document.getElementById("ollamaStatus");
-    const esp32StatusEl = document.getElementById("esp32Status");
-    const listenerStatusEl = document.getElementById("listenerStatus");
-
-    const factTranscript = document.getElementById("factTranscript");
-    const factReply = document.getElementById("factReply");
-    const factModel = document.getElementById("factModel");
-    const factAction = document.getElementById("factAction");
-    const factListeningMode = document.getElementById("factListeningMode");
-    const factListenerOnline = document.getElementById("factListenerOnline");
-    const factLanguage = document.getElementById("factLanguage");
-
-    let mediaRecorder = null;
-    let mediaChunks = [];
-    let isRecording = false;
-    let latestHistoryKey = "";
-
-    function setStatus(message) {
-      statusLine.textContent = message;
-    }
-
-    function applyStatus(element, ok, fallback) {
-      element.className = "";
-      if (ok === true) {
-        element.classList.add("good");
-        element.textContent = fallback || "Connecte";
-      } else if (ok === false) {
-        element.classList.add("bad");
-        element.textContent = fallback || "Hors ligne";
-      } else {
-        element.classList.add("warn");
-        element.textContent = fallback || "Verification...";
-      }
-    }
-
-    function formatDate(ts) {
-      if (!ts) return "-";
-      const date = new Date(ts * 1000);
-      return date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    }
-
-    function renderHistory(entries) {
-      const key = JSON.stringify(entries.map((item) => [item.id, item.timestamp]));
-      if (key === latestHistoryKey) return;
-      latestHistoryKey = key;
-      historyEl.innerHTML = "";
-
-      if (!entries.length) {
-        historyEl.innerHTML = '<div class="entry"><div class="entry-text">Aucun echange pour le moment.</div></div>';
-        return;
-      }
-
-      entries.forEach((item) => {
-        const entry = document.createElement("article");
-        entry.className = `entry ${item.role === "assistant" ? "assistant" : "user"}`;
-
-        const top = document.createElement("div");
-        top.className = "entry-top";
-        top.innerHTML = `<span>${item.role === "assistant" ? "Jarvis" : "Toi"}</span><span>${formatDate(item.timestamp)}</span>`;
-
-        const text = document.createElement("div");
-        text.className = "entry-text";
-        text.textContent = item.text || "";
-
-        entry.appendChild(top);
-        entry.appendChild(text);
-
-        if (item.meta) {
-          const meta = document.createElement("div");
-          meta.className = "meta";
-          meta.textContent = `Action: ${item.meta.action || "none"} | Visage: ${item.meta.face || "neutral"} | Modele: ${item.meta.model || "-"} | Langue: ${item.meta.language || "-"}`;
-          entry.appendChild(meta);
-        }
-
-        historyEl.appendChild(entry);
-      });
-
-      historyEl.scrollTop = historyEl.scrollHeight;
-    }
-
-    async function postJson(url, payload) {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || `HTTP ${res.status}`);
-      }
-      return data;
-    }
-
-    function setModeButtons(mode) {
-      wakeModeBtn.classList.toggle("active", mode === "wake");
-      continuousModeBtn.classList.toggle("active", mode === "continuous");
-      wakeModeBtn.classList.toggle("secondary", mode !== "wake");
-      continuousModeBtn.classList.toggle("secondary", mode !== "continuous");
-    }
-
-    async function refreshStatus() {
-      try {
-        const res = await fetch("/api/status");
-        const data = await res.json();
-
-        applyStatus(jarvisStatusEl, true);
-        applyStatus(ollamaStatusEl, !!data.ollama?.ok);
-        applyStatus(esp32StatusEl, !!data.esp32?.ok);
-        applyStatus(listenerStatusEl, !!data.listener?.online, data.listener?.online ? "Actif" : "En attente");
-
-        factTranscript.textContent = data.state?.last_transcript || "-";
-        factReply.textContent = data.state?.last_reply || "-";
-        factModel.textContent = data.state?.last_model || "-";
-        factAction.textContent = `${data.state?.last_action || "none"} / ${data.state?.last_face || "neutral"}`;
-        factListeningMode.textContent = data.listener?.mode || "-";
-        factListenerOnline.textContent = data.listener?.online ? "Connecte" : "Hors ligne";
-        factLanguage.textContent = data.state?.last_language || "-";
-        volumeSlider.value = data.state?.volume || 0.72;
-        setModeButtons(data.listener?.mode || "wake");
-      } catch (error) {
-        applyStatus(jarvisStatusEl, false);
-        applyStatus(ollamaStatusEl, null, "Indisponible");
-        applyStatus(esp32StatusEl, null, "Indisponible");
-        applyStatus(listenerStatusEl, null, "Indisponible");
-        setStatus(`Backend indisponible: ${error.message}`);
-      }
-    }
-
-    async function refreshHistory() {
-      try {
-        const res = await fetch("/api/history");
-        const data = await res.json();
-        renderHistory(Array.isArray(data) ? data : []);
-      } catch (error) {
-        setStatus(`Historique indisponible: ${error.message}`);
-      }
-    }
-
-    async function setListeningMode(mode) {
-      try {
-        const data = await postJson("/api/listening-mode", { mode });
-        setModeButtons(data.mode);
-        setStatus(`Mode d'ecoute active: ${data.mode}`);
-        await refreshStatus();
-      } catch (error) {
-        setStatus(`Erreur mode d'ecoute: ${error.message}`);
-      }
-    }
-
-    async function askJarvis(prompt) {
-      const cleaned = prompt.trim();
-      if (!cleaned) return;
-
-      setStatus("Jarvis reflechit...");
-      sendBtn.disabled = true;
-      micBtn.disabled = true;
-
-      try {
-        const data = await postJson("/api/ask", { prompt: cleaned });
-        promptInput.value = "";
-        if (data.audio_url) {
-          audioPlayer.src = data.audio_url;
-          try { await audioPlayer.play(); } catch (_) {}
-        }
-        setStatus(`Reponse envoyee au robot via ${data.model}.`);
-        await refreshHistory();
-        await refreshStatus();
-      } catch (error) {
-        setStatus(`Erreur: ${error.message}`);
-      } finally {
-        sendBtn.disabled = false;
-        micBtn.disabled = false;
-      }
-    }
-
-    let volumeTimer = null;
-    function queueVolumeUpdate() {
-      clearTimeout(volumeTimer);
-      volumeTimer = setTimeout(async () => {
-        try {
-          await postJson("/api/volume", { volume: Number(volumeSlider.value) });
-          setStatus(`Volume regle sur ${Number(volumeSlider.value).toFixed(2)}.`);
-          await refreshStatus();
-        } catch (error) {
-          setStatus(`Erreur volume: ${error.message}`);
-        }
-      }, 120);
-    }
-
-    async function transcribeBlob(blob) {
-      const form = new FormData();
-      form.append("audio", blob, "voice.webm");
-      const res = await fetch("/api/transcribe", { method: "POST", body: form });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || `HTTP ${res.status}`);
-      }
-      return data.text || "";
-    }
-
-    async function toggleRecorderFallback() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setStatus("Micro navigateur indisponible.");
-        return;
-      }
-
-      if (!isRecording) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaChunks = [];
-        mediaRecorder = new MediaRecorder(stream);
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data && event.data.size > 0) {
-            mediaChunks.push(event.data);
-          }
-        };
-
-        mediaRecorder.onstop = async () => {
-          const blob = new Blob(mediaChunks, { type: mediaRecorder.mimeType || "audio/webm" });
-          try {
-            setStatus("Transcription locale...");
-            const text = await transcribeBlob(blob);
-            promptInput.value = text;
-            if (text.trim()) {
-              await askJarvis(text);
-            } else {
-              setStatus("Aucune parole detectee.");
-            }
-          } catch (error) {
-            setStatus(`Erreur transcription: ${error.message}`);
-          } finally {
-            stream.getTracks().forEach((track) => track.stop());
-          }
-        };
-
-        mediaRecorder.start();
-        isRecording = true;
-        micBtn.textContent = "Stop";
-        setStatus("Enregistrement audio...");
-      } else {
-        isRecording = false;
-        micBtn.textContent = "Parler";
-        mediaRecorder.stop();
-      }
-    }
-
-    sendBtn.addEventListener("click", () => askJarvis(promptInput.value));
-    refreshBtn.addEventListener("click", async () => {
-      await refreshStatus();
-      await refreshHistory();
-      setStatus("Vue rafraichie.");
-    });
-    wakeModeBtn.addEventListener("click", () => setListeningMode("wake"));
-    continuousModeBtn.addEventListener("click", () => setListeningMode("continuous"));
-    volumeSlider.addEventListener("input", queueVolumeUpdate);
-
-    promptInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-        event.preventDefault();
-        askJarvis(promptInput.value);
-      }
-    });
-
-    micBtn.addEventListener("click", async () => {
-      try {
-        await toggleRecorderFallback();
-      } catch (error) {
-        setStatus(`Erreur micro: ${error.message}`);
-      }
-    });
-
-    document.querySelectorAll("[data-action]").forEach((button) => {
-      button.addEventListener("click", async () => {
-        const action = button.getAttribute("data-action");
-        try {
-          await postJson("/api/action", { action });
-          setStatus(`Action envoyee: ${action}`);
-          await refreshStatus();
-        } catch (error) {
-          setStatus(`Erreur action: ${error.message}`);
-        }
-      });
-    });
-
-    document.querySelectorAll("[data-face]").forEach((button) => {
-      button.addEventListener("click", async () => {
-        const face = button.getAttribute("data-face");
-        try {
-          await postJson("/api/face", { face });
-          setStatus(`Expression envoyee: ${face}`);
-          await refreshStatus();
-        } catch (error) {
-          setStatus(`Erreur visage: ${error.message}`);
-        }
-      });
-    });
-
-    async function boot() {
-      await refreshStatus();
-      await refreshHistory();
-      setStatus("Pret.");
-      setInterval(refreshStatus, 4000);
-      setInterval(refreshHistory, 3500);
-    }
-
-    boot();
+    const historyEl=document.getElementById("history"),promptInput=document.getElementById("promptInput"),sendBtn=document.getElementById("sendBtn"),micBtn=document.getElementById("micBtn"),stopBtn=document.getElementById("stopBtn"),refreshBtn=document.getElementById("refreshBtn"),wakeModeBtn=document.getElementById("wakeModeBtn"),continuousModeBtn=document.getElementById("continuousModeBtn"),sleepModeBtn=document.getElementById("sleepModeBtn"),volumeSlider=document.getElementById("volumeSlider"),volumeValue=document.getElementById("volumeValue"),headAngleSlider=document.getElementById("headAngleSlider"),headAngleValue=document.getElementById("headAngleValue"),statusLine=document.getElementById("statusLine"),transcriptLive=document.getElementById("transcriptLive"),replyLive=document.getElementById("replyLive"),stateBadge=document.getElementById("stateBadge"),jarvisStatusEl=document.getElementById("jarvisStatus"),ollamaStatusEl=document.getElementById("ollamaStatus"),esp32StatusEl=document.getElementById("esp32Status"),listenerStatusEl=document.getElementById("listenerStatus"),factModel=document.getElementById("factModel"),factLanguage=document.getElementById("factLanguage"),factAction=document.getElementById("factAction"),factListener=document.getElementById("factListener"),orbCanvas=document.getElementById("orbCanvas"),ctx=orbCanvas.getContext("2d");
+    let mediaRecorder=null,mediaChunks=[],isRecording=false,latestHistoryKey="",latestStatus=null,volumeTimer=null,headTimer=null,orbTime=0;
+    const particles=Array.from({length:84},(_,i)=>({angle:(Math.PI*2*i)/84,radiusSeed:.52+Math.random()*.58,speed:.25+Math.random()*.9,size:1+Math.random()*2.8,drift:Math.random()*Math.PI*2}));
+    const setStatus=(m)=>statusLine.textContent=m;
+    function applyStatus(el,ok,fallback){el.className="";if(ok===true){el.classList.add("good");el.textContent=fallback||"Connecte"}else if(ok===false){el.classList.add("bad");el.textContent=fallback||"Hors ligne"}else{el.classList.add("warn");el.textContent=fallback||"Verification..."}}
+    function formatTime(ts){if(!ts)return"-";return new Date(ts*1000).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
+    function setModeButtons(mode){[[wakeModeBtn,mode==="wake"],[continuousModeBtn,mode==="continuous"],[sleepModeBtn,mode==="sleep"]].forEach(([b,a])=>{b.classList.toggle("active",a);b.classList.toggle("secondary",!a)})}
+    function deriveOrbMode(s){if(!s)return"idle";if(s.state?.sleeping||s.listener?.mode==="sleep")return"sleep";if(s.state?.assistant_speaking)return"speaking";if(s.state?.last_face==="thinking")return"thinking";if(s.listener?.mode==="continuous"||s.state?.last_face==="listening")return"listening";return"idle"}
+    function renderHistory(entries){const key=JSON.stringify(entries.map((i)=>[i.id,i.timestamp]));if(key===latestHistoryKey)return;latestHistoryKey=key;historyEl.innerHTML="";if(!entries.length){historyEl.innerHTML='<div class="entry"><div class="entry-text">Aucun echange pour le moment.</div></div>';return}entries.slice(-18).forEach((item)=>{const card=document.createElement("article");card.className=`entry ${item.role==="assistant"?"assistant":"user"}`;const top=document.createElement("div");top.className="entry-top";top.innerHTML=`<span>${item.role==="assistant"?"Jarvis":"Toi"}</span><span>${formatTime(item.timestamp)}</span>`;const text=document.createElement("div");text.className="entry-text";text.textContent=item.text||"";card.append(top,text);if(item.meta){const meta=document.createElement("div");meta.className="entry-meta";meta.textContent=`Action: ${item.meta.action||"none"} | Visage: ${item.meta.face||"neutral"} | Modele: ${item.meta.model||"-"} | Langue: ${item.meta.language||"-"}`;card.appendChild(meta)}historyEl.appendChild(card)});historyEl.scrollTop=historyEl.scrollHeight}
+    async function postJson(url,payload){const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const data=await res.json();if(!res.ok)throw new Error(data.error||`HTTP ${res.status}`);return data}
+    async function refreshStatus(){try{const res=await fetch("/api/status");const data=await res.json();latestStatus=data;applyStatus(jarvisStatusEl,true);applyStatus(ollamaStatusEl,!!data.ollama?.ok);applyStatus(esp32StatusEl,!!data.esp32?.ok);applyStatus(listenerStatusEl,!!data.listener?.online,data.listener?.online?"Actif":"En attente");transcriptLive.textContent=data.state?.last_transcript||"Aucune parole pour l'instant.";replyLive.textContent=data.state?.last_reply||"Pret a repondre.";factModel.textContent=data.state?.last_model||"-";factLanguage.textContent=data.state?.last_language||"-";factAction.textContent=`${data.state?.last_action||"none"} / ${data.state?.last_face||"neutral"}`;factListener.textContent=`${data.listener?.mode||"-"} | ${data.listener?.online?"online":"offline"}`;setModeButtons(data.listener?.mode||"wake");const volume=Number(data.state?.volume||.72);volumeSlider.value=volume;volumeValue.textContent=`${Math.round(volume*100)}%`;const espAngle=data.esp32?.data?.servo_angle;const angle=Number.isFinite(Number(espAngle))?Number(espAngle):Number(data.state?.head_angle||90);headAngleSlider.value=angle;headAngleValue.textContent=`${Math.round(angle)}°`;stateBadge.textContent=data.listener?.mode==="sleep"?"Sleep":deriveOrbMode(data)}catch(error){applyStatus(jarvisStatusEl,false);applyStatus(ollamaStatusEl,null,"Indisponible");applyStatus(esp32StatusEl,null,"Indisponible");applyStatus(listenerStatusEl,null,"Indisponible");setStatus(`Backend indisponible: ${error.message}`)}}
+    async function refreshHistory(){try{const res=await fetch("/api/history");const data=await res.json();renderHistory(Array.isArray(data)?data:[])}catch(error){setStatus(`Historique indisponible: ${error.message}`)}}
+    async function setListeningMode(mode){try{const data=await postJson("/api/listening-mode",{mode});setModeButtons(data.mode);setStatus(`Mode active: ${data.mode}`);await refreshStatus()}catch(error){setStatus(`Erreur mode d'ecoute: ${error.message}`)}}
+    async function askJarvis(prompt,language=null){const cleaned=prompt.trim();if(!cleaned)return;setStatus("Jarvis reflechit...");sendBtn.disabled=true;micBtn.disabled=true;try{const payload=language?{prompt:cleaned,language}:{prompt:cleaned};const data=await postJson("/api/ask",payload);promptInput.value="";await refreshHistory();await refreshStatus();setStatus(`Reponse envoyee via ${data.model}.`)}catch(error){setStatus(`Erreur: ${error.message}`)}finally{sendBtn.disabled=false;micBtn.disabled=false}}
+    async function stopJarvis(){try{await postJson("/api/stop-speaking",{});setStatus("Jarvis interrompu.");await refreshStatus()}catch(error){setStatus(`Erreur stop: ${error.message}`)}}
+    function queueVolumeUpdate(){const value=Number(volumeSlider.value);volumeValue.textContent=`${Math.round(value*100)}%`;clearTimeout(volumeTimer);volumeTimer=setTimeout(async()=>{try{await postJson("/api/volume",{volume:value});setStatus(`Volume regle sur ${Math.round(value*100)}%.`);await refreshStatus()}catch(error){setStatus(`Erreur volume: ${error.message}`)}},110)}
+    function queueHeadAngleUpdate(){const value=Number(headAngleSlider.value);headAngleValue.textContent=`${Math.round(value)}°`;clearTimeout(headTimer);headTimer=setTimeout(async()=>{try{await postJson("/api/head-angle",{angle:value});setStatus(`Tete placee a ${Math.round(value)} degres.`);await refreshStatus()}catch(error){setStatus(`Erreur angle: ${error.message}`)}},90)}
+    async function transcribeBlob(blob){const form=new FormData();form.append("audio",blob,"voice.webm");const res=await fetch("/api/transcribe",{method:"POST",body:form});const data=await res.json();if(!res.ok)throw new Error(data.error||`HTTP ${res.status}`);return data}
+    async function toggleRecorder(){if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){setStatus("Micro navigateur indisponible.");return}if(!isRecording){const stream=await navigator.mediaDevices.getUserMedia({audio:true});mediaChunks=[];mediaRecorder=new MediaRecorder(stream);mediaRecorder.ondataavailable=(e)=>{if(e.data&&e.data.size>0)mediaChunks.push(e.data)};mediaRecorder.onstop=async()=>{const blob=new Blob(mediaChunks,{type:mediaRecorder.mimeType||"audio/webm"});try{setStatus("Transcription locale...");const data=await transcribeBlob(blob);const text=data.text||"";promptInput.value=text;transcriptLive.textContent=text||"Aucune parole detectee.";factLanguage.textContent=data.language||"-";if(text.trim())await askJarvis(text,data.language||null);else setStatus("Aucune parole detectee.")}catch(error){setStatus(`Erreur transcription: ${error.message}`)}finally{stream.getTracks().forEach((t)=>t.stop())}};mediaRecorder.start();isRecording=true;micBtn.textContent="Stop micro";setStatus("Enregistrement audio...")}else{isRecording=false;micBtn.textContent="Parler";mediaRecorder.stop()}}
+    function drawOrb(nowMs){orbTime=nowMs*.001;const w=orbCanvas.width,h=orbCanvas.height,cx=w/2,cy=h/2-10,mode=deriveOrbMode(latestStatus),pulseBase=mode==="speaking"?1.22:mode==="thinking"?.88:mode==="listening"?1.06:mode==="sleep"?.46:.98,pulseDepth=mode==="speaking"?.18:mode==="thinking"?.08:mode==="listening"?.1:.025,pulse=pulseBase+Math.sin(orbTime*(mode==="speaking"?5.2:2.2))*pulseDepth,coreRadius=92*pulse;ctx.clearRect(0,0,w,h);const bgGlow=ctx.createRadialGradient(cx,cy,0,cx,cy,260);bgGlow.addColorStop(0,mode==="sleep"?"rgba(55,92,120,.12)":"rgba(61,183,255,.24)");bgGlow.addColorStop(.45,"rgba(61,183,255,.08)");bgGlow.addColorStop(1,"rgba(0,0,0,0)");ctx.fillStyle=bgGlow;ctx.fillRect(0,0,w,h);for(let ring=0;ring<3;ring+=1){const radius=coreRadius+32+ring*28+Math.sin(orbTime*(1.4+ring*.24)+ring)*7;ctx.beginPath();ctx.arc(cx,cy,radius,0,Math.PI*2);ctx.strokeStyle=`rgba(122,215,255,${mode==="sleep"?.05:.12-ring*.02})`;ctx.lineWidth=1.4;ctx.stroke()}particles.forEach((p,index)=>{const spin=orbTime*p.speed+p.drift,radius=coreRadius+30+p.radiusSeed*110+Math.sin(orbTime*1.8+index)*(mode==="thinking"?18:9),x=cx+Math.cos(p.angle+spin*.45)*radius,y=cy+Math.sin(p.angle+spin)*radius*.62,alpha=mode==="sleep"?.09:.22+Math.sin(orbTime*2.1+index)*.08;ctx.beginPath();ctx.fillStyle=`rgba(154,240,231,${Math.max(.04,alpha)})`;ctx.arc(x,y,p.size,0,Math.PI*2);ctx.fill()});const grad=ctx.createRadialGradient(cx-26,cy-36,10,cx,cy,coreRadius+42);grad.addColorStop(0,mode==="sleep"?"rgba(169,209,234,.22)":"rgba(255,255,255,.95)");grad.addColorStop(.18,mode==="sleep"?"rgba(125,178,214,.26)":"rgba(154,240,231,.92)");grad.addColorStop(.4,mode==="thinking"?"rgba(112,205,255,.84)":"rgba(94,196,255,.86)");grad.addColorStop(.74,mode==="sleep"?"rgba(44,88,122,.42)":"rgba(20,86,132,.78)");grad.addColorStop(1,"rgba(4,16,28,.2)");ctx.beginPath();ctx.arc(cx,cy,coreRadius,0,Math.PI*2);ctx.fillStyle=grad;ctx.shadowColor=mode==="sleep"?"rgba(108,170,219,.18)":"rgba(90,220,255,.4)";ctx.shadowBlur=mode==="speaking"?48:34;ctx.fill();ctx.shadowBlur=0;ctx.beginPath();ctx.arc(cx,cy,coreRadius*.74,0,Math.PI*2);ctx.strokeStyle=mode==="sleep"?"rgba(200,226,255,.12)":"rgba(255,255,255,.24)";ctx.lineWidth=1.3;ctx.stroke();for(let i=0;i<18;i+=1){const angle=(Math.PI*2*i)/18+orbTime*.16,radius=coreRadius*(.56+.05*Math.sin(orbTime*2+i)),x=cx+Math.cos(angle)*radius,y=cy+Math.sin(angle)*radius;ctx.beginPath();ctx.fillStyle=mode==="sleep"?"rgba(255,255,255,.06)":"rgba(255,255,255,.18)";ctx.arc(x,y,mode==="speaking"?2.8:2.2,0,Math.PI*2);ctx.fill()}requestAnimationFrame(drawOrb)}
+    sendBtn.addEventListener("click",()=>askJarvis(promptInput.value));stopBtn.addEventListener("click",stopJarvis);refreshBtn.addEventListener("click",async()=>{await refreshStatus();await refreshHistory();setStatus("Vue rafraichie.")});wakeModeBtn.addEventListener("click",()=>setListeningMode("wake"));continuousModeBtn.addEventListener("click",()=>setListeningMode("continuous"));sleepModeBtn.addEventListener("click",()=>setListeningMode("sleep"));volumeSlider.addEventListener("input",queueVolumeUpdate);headAngleSlider.addEventListener("input",queueHeadAngleUpdate);promptInput.addEventListener("keydown",(event)=>{if(event.key==="Enter"&&(event.ctrlKey||event.metaKey)){event.preventDefault();askJarvis(promptInput.value)}});micBtn.addEventListener("click",async()=>{try{await toggleRecorder()}catch(error){setStatus(`Erreur micro: ${error.message}`)}});document.querySelectorAll("[data-action]").forEach((button)=>button.addEventListener("click",async()=>{const action=button.getAttribute("data-action");try{await postJson("/api/action",{action});setStatus(`Action envoyee: ${action}`);await refreshStatus()}catch(error){setStatus(`Erreur action: ${error.message}`)}}));document.querySelectorAll("[data-face]").forEach((button)=>button.addEventListener("click",async()=>{const face=button.getAttribute("data-face");try{await postJson("/api/face",{face});setStatus(`Expression envoyee: ${face}`);await refreshStatus()}catch(error){setStatus(`Erreur visage: ${error.message}`)}}));
+    async function boot(){volumeValue.textContent=`${Math.round(Number(volumeSlider.value)*100)}%`;headAngleValue.textContent=`${Math.round(Number(headAngleSlider.value))}°`;await refreshStatus();await refreshHistory();setStatus("Pret.");setInterval(refreshStatus,2800);setInterval(refreshHistory,3200);requestAnimationFrame(drawOrb)}boot();
   </script>
 </body>
 </html>

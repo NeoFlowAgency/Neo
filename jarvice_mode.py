@@ -25,32 +25,43 @@ from faster_whisper import WhisperModel
 @dataclass
 class Config:
     sample_rate: int = int(os.environ.get("JARVICE_SAMPLE_RATE", "16000"))
-    wake_chunk_sec: float = float(os.environ.get("JARVICE_WAKE_CHUNK_SEC", "1.8"))
-    wake_overlap_sec: float = float(os.environ.get("JARVICE_WAKE_OVERLAP_SEC", "0.9"))
+    wake_chunk_sec: float = float(os.environ.get("JARVICE_WAKE_CHUNK_SEC", "2.6"))
+    wake_overlap_sec: float = float(os.environ.get("JARVICE_WAKE_OVERLAP_SEC", "1.6"))
     command_max_sec: float = float(os.environ.get("JARVICE_COMMAND_MAX_SEC", "10.0"))
     silence_rms_threshold: float = float(os.environ.get("JARVICE_SILENCE_RMS", "170"))
     interrupt_rms_threshold: float = float(os.environ.get("JARVICE_INTERRUPT_RMS", "420"))
     silence_timeout_sec: float = float(os.environ.get("JARVICE_SILENCE_TIMEOUT", "1.0"))
     backend_url: str = os.environ.get("JARVICE_BACKEND", "http://127.0.0.1:5000")
-    wake_model: str = os.environ.get("JARVICE_WAKE_MODEL", "small")
+    wake_model: str = os.environ.get("JARVICE_WAKE_MODEL", "medium")
     command_model: str = os.environ.get("JARVICE_COMMAND_MODEL", "small")
     ping_interval_sec: float = float(os.environ.get("JARVICE_PING_INTERVAL", "4.0"))
     poll_mode_interval_sec: float = float(os.environ.get("JARVICE_POLL_MODE_INTERVAL", "2.0"))
     wake_timeout_after_word_sec: float = float(os.environ.get("JARVICE_WAKE_TIMEOUT_AFTER_WORD", "5.0"))
+    interrupt_cooldown_sec: float = float(os.environ.get("JARVICE_INTERRUPT_COOLDOWN", "1.2"))
 
 
 WAKE_PATTERNS = [
     r"\bok\s+jarvis\b",
     r"\bok\s+jarvice\b",
+    r"\bok\s+jarvise\b",
     r"\bjarvisse\b",
     r"\bjarviss\b",
+    r"\bjarvise\b",
     r"\bjarvi\b",
     r"\bjervis\b",
     r"\bgervis\b",
     r"\bgervais\b",
+    r"\bdjarvis\b",
     r"\bjarvis\b",
     r"\bjarvice\b",
     r"\bneo\b",
+]
+
+WAKE_UP_PATTERNS = [
+    r"\bwake up\b",
+    r"\breveille toi\b",
+    r"\breveille-toi\b",
+    r"\bsors de veille\b",
 ]
 
 STOP_ONLY_PATTERNS = [
@@ -106,6 +117,11 @@ def strip_wake_words(text: str) -> str:
         cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,.!?;:")
     return cleaned.strip()
+
+
+def is_wake_up_intent(text: str) -> bool:
+    lowered = text.lower()
+    return any(re.search(pattern, lowered) for pattern in WAKE_UP_PATTERNS)
 
 
 def ask_backend(prompt: str, backend_url: str, language: str | None = None) -> dict:
@@ -234,6 +250,7 @@ def main() -> int:
     last_ping_at = 0.0
     last_poll_at = 0.0
     speaking_until = 0.0
+    last_interrupt_at = 0.0
 
     print(f"[JarvisListener] Ready. Mode={current_mode}. Wake word: Jarvis / OK Jarvis / Neo")
 
@@ -261,6 +278,9 @@ def main() -> int:
             frame_rms = rms_int16(frame)
 
             if time.time() < speaking_until and frame_rms >= cfg.interrupt_rms_threshold:
+                if now - last_interrupt_at < cfg.interrupt_cooldown_sec:
+                    continue
+                last_interrupt_at = now
                 print("[Interrupt] User voice detected, stopping Jarvis.")
                 stop_backend_speaking(cfg.backend_url)
                 speaking_until = 0.0
@@ -272,6 +292,32 @@ def main() -> int:
                     if not is_stop_only(prompt):
                         speaking_until = time.time() + handle_prompt(prompt, cfg, prompt_language) + 0.2
                 drain_queue(q)
+                continue
+
+            if current_mode == "sleep":
+                wake_buffer = np.concatenate([wake_buffer, frame])
+                if wake_buffer.size < wake_samples_target:
+                    continue
+
+                wake_chunk = wake_buffer[-wake_samples_target:]
+                if wake_buffer.size > wake_overlap_samples:
+                    wake_buffer = wake_buffer[-wake_overlap_samples:]
+
+                wake_text, _wake_language = transcribe_int16_pcm(wake_model, wake_chunk)
+                if not wake_text or not has_wake_word(wake_text):
+                    continue
+
+                print(f"[SleepWake] {wake_text}")
+                phrase_pcm = wait_for_phrase_start(q, cfg)
+                prompt, prompt_language = transcribe_int16_pcm(command_model, phrase_pcm)
+                if not prompt:
+                    prompt = "wake up"
+                    prompt_language = "en"
+                if has_wake_word(prompt) or is_wake_up_intent(prompt):
+                    set_backend_mode(cfg.backend_url, "wake")
+                    current_mode = "wake"
+                    speaking_until = time.time() + handle_prompt("wake up", cfg, prompt_language) + 0.2
+                    drain_queue(q)
                 continue
 
             if current_mode == "continuous":

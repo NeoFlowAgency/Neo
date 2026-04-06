@@ -55,7 +55,7 @@ KOKORO_VOICES_URL = os.environ.get(
 ALLOWED_ACTIONS = {"turn_left", "turn_right", "nod", "center", "none"}
 ALLOWED_FACES = {"neutral", "listening", "thinking", "speaking", "happy", "sleepy"}
 ALLOWED_LANGUAGES = {"fr", "en"}
-ALLOWED_LISTENING_MODES = {"wake", "continuous"}
+ALLOWED_LISTENING_MODES = {"wake", "continuous", "sleep"}
 
 LIGHT_MODEL_HINTS = {
     "bonjour", "salut", "hello", "hi", "tourne", "droite", "gauche", "centre",
@@ -83,6 +83,18 @@ DEACTIVATE_CONTINUOUS_PATTERNS = (
     r"\bstop (la )?(conversation|discussion|ecoute|écoute) continue\b",
     r"\bquitte le mode (conversation|discussion|ecoute|écoute) continue\b",
     r"\breviens? en mode (wake|veille|réveil)\b",
+)
+SLEEP_PATTERNS = (
+    r"\b(mets?|met)\s*(toi|vous)?\s*en veille\b",
+    r"\bgo to sleep\b",
+    r"\bsleep mode\b",
+    r"\bendors? toi\b",
+)
+WAKE_UP_PATTERNS = (
+    r"\bwake up\b",
+    r"\breveille toi\b",
+    r"\breveille-toi\b",
+    r"\bsors de veille\b",
 )
 LISTENER_ONLINE_TIMEOUT_SEC = 12
 
@@ -171,6 +183,8 @@ runtime_state = {
     "assistant_speaking": False,
     "speech_until": None,
     "volume": 0.72,
+    "head_angle": 90,
+    "sleeping": False,
 }
 
 
@@ -290,22 +304,70 @@ def touch_listener(source: str = "jarvis_mode") -> None:
 
 def parse_mode_command(prompt: str, language: str) -> dict | None:
     lowered = prompt.lower()
+    if any(re.search(pattern, lowered) for pattern in SLEEP_PATTERNS):
+        set_listening_mode("sleep", source="voice")
+        runtime_state["sleeping"] = True
+        text = (
+            "Going to sleep. Wake me when you need me."
+            if language == "en"
+            else "Je passe en veille. Reveille-moi quand tu as besoin de moi."
+        )
+        return {
+            "text": text,
+            "action": "center",
+            "face": "sleepy",
+            "language": language,
+            "model": "control",
+            "sleep_after": True,
+            "wake_before": False,
+        }
+    if any(re.search(pattern, lowered) for pattern in WAKE_UP_PATTERNS):
+        set_listening_mode("wake", source="voice")
+        runtime_state["sleeping"] = False
+        text = "I am awake." if language == "en" else "Je suis reveille."
+        return {
+            "text": text,
+            "action": "center",
+            "face": "happy",
+            "language": language,
+            "model": "control",
+            "sleep_after": False,
+            "wake_before": True,
+        }
     if any(re.search(pattern, lowered) for pattern in ACTIVATE_CONTINUOUS_PATTERNS):
         set_listening_mode("continuous", source="voice")
+        runtime_state["sleeping"] = False
         text = (
             "Continuous conversation is now active. Just keep talking."
             if language == "en"
             else "Le mode conversation continue est maintenant actif. Continue simplement à me parler."
         )
-        return {"text": text, "action": "none", "face": "happy", "language": language, "model": "control"}
+        return {
+            "text": text,
+            "action": "none",
+            "face": "happy",
+            "language": language,
+            "model": "control",
+            "sleep_after": False,
+            "wake_before": True,
+        }
     if any(re.search(pattern, lowered) for pattern in DEACTIVATE_CONTINUOUS_PATTERNS):
         set_listening_mode("wake", source="voice")
+        runtime_state["sleeping"] = False
         text = (
             "Continuous conversation is now disabled. Say Jarvis when you want me again."
             if language == "en"
             else "Le mode conversation continue est désactivé. Dis Jarvis quand tu veux me réveiller."
         )
-        return {"text": text, "action": "none", "face": "neutral", "language": language, "model": "control"}
+        return {
+            "text": text,
+            "action": "none",
+            "face": "neutral",
+            "language": language,
+            "model": "control",
+            "sleep_after": False,
+            "wake_before": True,
+        }
     return None
 
 
@@ -509,6 +571,23 @@ def set_robot_volume(volume: float) -> dict:
     return result
 
 
+def send_robot_head_angle(angle: float | int) -> dict:
+    clamped = max(0, min(180, int(round(float(angle)))))
+    result = send_esp32_json("angle", {"angle": clamped}, timeout=5)
+    if result.get("ok"):
+        runtime_state["head_angle"] = clamped
+    runtime_state["last_esp32_result"] = result
+    return result
+
+
+def set_robot_sleeping(sleeping: bool) -> dict:
+    result = send_esp32_json("sleep", {"sleep": bool(sleeping)}, timeout=5)
+    if result.get("ok"):
+        runtime_state["sleeping"] = bool(sleeping)
+    runtime_state["last_esp32_result"] = result
+    return result
+
+
 def send_robot_action(action: str) -> dict | None:
     if action not in ALLOWED_ACTIONS or action == "none":
         return None
@@ -636,6 +715,11 @@ def api_listening_mode():
     if mode not in ALLOWED_LISTENING_MODES:
         return jsonify({"error": "Mode d'écoute invalide"}), 400
     set_listening_mode(mode, source="dashboard")
+    runtime_state["sleeping"] = mode == "sleep"
+    if mode == "sleep":
+        set_robot_sleeping(True)
+    else:
+        set_robot_sleeping(False)
     log_event("INFO", f"Listening mode changed to {mode}")
     return jsonify({"ok": True, "mode": mode, "listener_online": is_listener_online()})
 
@@ -645,9 +729,6 @@ def api_listener_ping():
     if request.method == "OPTIONS":
         return ("", 204)
     body = parse_json_body()
-    mode = str(body.get("mode", listener_state["mode"])).strip()
-    if mode in ALLOWED_LISTENING_MODES:
-        listener_state["mode"] = mode
     touch_listener(source=str(body.get("source", "jarvis_mode")))
     return jsonify({"ok": True, "mode": listener_state["mode"]})
 
@@ -704,6 +785,19 @@ def api_volume():
     return jsonify({"ok": True, "volume": runtime_state["volume"], "robot": result})
 
 
+@app.route("/api/head-angle", methods=["POST", "OPTIONS"])
+def api_head_angle():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = parse_json_body()
+    try:
+        angle = float(body.get("angle", runtime_state["head_angle"]))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Angle invalide"}), 400
+    result = send_robot_head_angle(angle)
+    return jsonify({"ok": True, "angle": runtime_state["head_angle"], "robot": result})
+
+
 @app.route("/api/ask", methods=["POST", "OPTIONS"])
 def api_ask():
     if request.method == "OPTIONS":
@@ -749,6 +843,10 @@ def api_ask():
 
     audio_url = None
     audio_duration_sec = None
+    sleep_after = bool(result.get("sleep_after"))
+    wake_before = bool(result.get("wake_before"))
+    if wake_before:
+        set_robot_sleeping(False)
     try:
         unique_name = f"response_{int(time.time())}_{uuid.uuid4().hex[:6]}.wav"
         _wav_path, audio_duration_sec = generate_wav(result["text"], unique_name, result["language"])
@@ -763,6 +861,8 @@ def api_ask():
             "text": result["text"],
             "audio_url": audio_url,
             "face": result["face"],
+            "sleep_after": sleep_after,
+            "wake_before": wake_before,
         }
         esp32_result = send_esp32_json("speak", speak_payload, timeout=4)
         runtime_state["assistant_speaking"] = True
@@ -773,12 +873,15 @@ def api_ask():
         esp32_result = {"ok": True, "face": face_result, "action": action_result}
         runtime_state["assistant_speaking"] = False
         runtime_state["speech_until"] = None
+        if sleep_after:
+            set_robot_sleeping(True)
 
     runtime_state["last_reply"] = result["text"]
     runtime_state["last_action"] = result["action"]
     runtime_state["last_face"] = result["face"]
     runtime_state["last_language"] = result["language"]
     runtime_state["last_audio_url"] = audio_url
+    runtime_state["sleeping"] = sleep_after or listener_state["mode"] == "sleep"
     runtime_state["last_esp32_result"] = esp32_result
 
     add_chat_entry(

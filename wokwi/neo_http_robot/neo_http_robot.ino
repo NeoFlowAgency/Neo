@@ -26,8 +26,8 @@ static constexpr int SERVO_PIN = 18;
 static constexpr int ANGLE_CENTER = 90;
 static constexpr int ANGLE_LEFT = 55;
 static constexpr int ANGLE_RIGHT = 125;
-static constexpr int STEP_DELAY_MS = 14;
-static constexpr int HOLD_DELAY_MS = 140;
+static constexpr int STEP_DELAY_MS = 6;
+static constexpr int HOLD_DELAY_MS = 55;
 
 static constexpr int SCREEN_WIDTH = 128;
 static constexpr int SCREEN_HEIGHT = 64;
@@ -48,6 +48,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 int currentAngle = ANGLE_CENTER;
 bool oledReady = false;
 String currentFace = "neutral";
+bool robotSleeping = false;
 bool blinkClosed = false;
 unsigned long nextBlinkAt = 0;
 unsigned long blinkUntil = 0;
@@ -62,6 +63,7 @@ struct SpeakJob {
   String action;
   String face;
   String audioUrl;
+  bool sleepAfter;
 };
 
 void logLine(const String& line) {
@@ -86,6 +88,12 @@ void drawPupil(int x, int y, int size) {
 
 void drawFace() {
   if (!oledReady) return;
+
+  if (robotSleeping) {
+    display.clearDisplay();
+    display.display();
+    return;
+  }
 
   display.clearDisplay();
 
@@ -130,14 +138,13 @@ void drawFace() {
       display.drawLine(21, 14, 46, 11, SSD1306_WHITE);
       display.drawLine(81, 11, 106, 14, SSD1306_WHITE);
     } else if (currentFace == "thinking") {
-      eyeY = 19;
-      eyeH = 24;
-      pupilOffsetXLeft = 6;
-      pupilOffsetXRight = 12;
-      display.drawLine(20, 17, 46, 15, SSD1306_WHITE);
-      display.drawLine(82, 15, 108, 17, SSD1306_WHITE);
-      display.drawLine(55, 10, 62, 10, SSD1306_WHITE);
-      display.drawLine(66, 10, 73, 10, SSD1306_WHITE);
+      eyeY = 20;
+      eyeH = 22;
+      pupilOffsetY = 8;
+      pupilOffsetXLeft = 7;
+      pupilOffsetXRight = 11;
+      display.drawLine(22, 16, 46, 17, SSD1306_WHITE);
+      display.drawLine(82, 17, 106, 16, SSD1306_WHITE);
     } else if (currentFace == "speaking") {
       eyeY = 19;
       eyeH = 25;
@@ -157,6 +164,14 @@ void drawFace() {
 
 void updateFaceAnimation() {
   unsigned long now = millis();
+
+  if (robotSleeping) {
+    return;
+  }
+
+  if (currentFace == "thinking" && !audioPlaying) {
+    playThinkingChime();
+  }
 
   if (!blinkClosed && now > nextBlinkAt) {
     blinkClosed = true;
@@ -186,16 +201,17 @@ void setFace(const String& face) {
 }
 
 void playThinkingChime() {
-  if (millis() - lastThinkingChimeAt < 900) return;
+  if (millis() - lastThinkingChimeAt < 520) return;
   lastThinkingChimeAt = millis();
 
-  const int sampleCount = 1800;
+  const int sampleCount = 2400;
   int16_t buffer[sampleCount];
   for (int i = 0; i < sampleCount; i++) {
     float t = (float)i / AUDIO_SAMPLE_RATE;
-    float freq = (i < sampleCount / 2) ? 660.0f : 880.0f;
-    float env = 1.0f - ((float)i / sampleCount);
-    float sample = sinf(2.0f * PI * freq * t) * env * currentVolume * 1800.0f;
+    bool pulse = (i < 520) || (i > 820 && i < 1340) || (i > 1640 && i < 2140);
+    float freq = (i < sampleCount / 2) ? 740.0f : 920.0f;
+    float env = pulse ? 0.8f : 0.0f;
+    float sample = sinf(2.0f * PI * freq * t) * env * currentVolume * 1400.0f;
     buffer[i] = (int16_t)sample;
   }
   size_t bw = 0;
@@ -212,6 +228,28 @@ void setupOLED() {
     setFace("neutral");
   } else {
     logLine("OLED not detected");
+  }
+}
+
+void wakeRobot() {
+  robotSleeping = false;
+  if (oledReady) {
+    display.ssd1306_command(SSD1306_DISPLAYON);
+  }
+  setFace("neutral");
+}
+
+void sleepRobot() {
+  setFace("sleepy");
+  delay(180);
+  blinkClosed = true;
+  drawFace();
+  delay(160);
+  robotSleeping = true;
+  if (oledReady) {
+    display.clearDisplay();
+    display.display();
+    display.ssd1306_command(SSD1306_DISPLAYOFF);
   }
 }
 
@@ -250,6 +288,9 @@ void ensureServoAttached() {
 }
 
 void moveServoSmoothTo(int targetAngle, int stepDelay = STEP_DELAY_MS) {
+  if (robotSleeping) {
+    wakeRobot();
+  }
   ensureServoAttached();
   targetAngle = constrain(targetAngle, 0, 180);
   int direction = (targetAngle >= currentAngle) ? 1 : -1;
@@ -399,13 +440,17 @@ void speakTask(void* parameter) {
 
   stopAudioRequested = false;
   audioPlaying = false;
-  setFace("neutral");
+  if (job->sleepAfter) {
+    sleepRobot();
+  } else {
+    setFace("neutral");
+  }
   delete job;
   audioTaskHandle = nullptr;
   vTaskDelete(NULL);
 }
 
-bool queueSpeak(const String& action, const String& face, const String& audioUrl) {
+bool queueSpeak(const String& action, const String& face, const String& audioUrl, bool sleepAfter) {
   if (audioTaskHandle != nullptr) {
     stopAudioPlayback();
     unsigned long deadline = millis() + 1200;
@@ -414,7 +459,7 @@ bool queueSpeak(const String& action, const String& face, const String& audioUrl
     }
   }
 
-  SpeakJob* job = new SpeakJob{action, face, audioUrl};
+  SpeakJob* job = new SpeakJob{action, face, audioUrl, sleepAfter};
   BaseType_t result = xTaskCreatePinnedToCore(
     speakTask,
     "speakTask",
@@ -445,6 +490,7 @@ void handleHealth() {
   doc["audio_playing"] = audioPlaying;
   doc["oled_ready"] = oledReady;
   doc["face"] = currentFace;
+  doc["sleeping"] = robotSleeping;
 
   String response;
   serializeJson(doc, response);
@@ -470,6 +516,26 @@ void handleAction() {
   out["action"] = action;
   out["servo_angle"] = currentAngle;
 
+  String response;
+  serializeJson(out, response);
+  server.send(200, "application/json", response);
+}
+
+void handleAngle() {
+  DynamicJsonDocument doc(256);
+  auto err = deserializeJson(doc, server.arg("plain"));
+  if (err) {
+    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+    return;
+  }
+
+  int requested = doc["angle"] | currentAngle;
+  requested = constrain(requested, 0, 180);
+  moveServoSmoothTo(requested);
+
+  DynamicJsonDocument out(192);
+  out["ok"] = true;
+  out["servo_angle"] = currentAngle;
   String response;
   serializeJson(out, response);
   server.send(200, "application/json", response);
@@ -513,15 +579,45 @@ void handleSpeak() {
   String action = String((const char*)doc["action"]);
   String audioUrl = String((const char*)doc["audio_url"]);
   String face = String((const char*)doc["face"]);
+  bool sleepAfter = doc["sleep_after"] | false;
+  bool wakeBefore = doc["wake_before"] | false;
+
+  if (wakeBefore) {
+    wakeRobot();
+  }
 
   DynamicJsonDocument out(256);
-  bool queued = queueSpeak(action, face, audioUrl);
+  bool queued = queueSpeak(action, face, audioUrl, sleepAfter);
   out["ok"] = queued;
   out["queued"] = queued;
   out["audio_playing"] = audioPlaying;
   out["servo_angle"] = currentAngle;
   out["face"] = currentFace;
 
+  String response;
+  serializeJson(out, response);
+  server.send(200, "application/json", response);
+}
+
+void handleSleep() {
+  DynamicJsonDocument doc(256);
+  auto err = deserializeJson(doc, server.arg("plain"));
+  if (err) {
+    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+    return;
+  }
+
+  bool sleepRequested = doc["sleep"] | false;
+  if (sleepRequested) {
+    stopAudioPlayback();
+    sleepRobot();
+  } else {
+    wakeRobot();
+  }
+
+  DynamicJsonDocument out(160);
+  out["ok"] = true;
+  out["sleeping"] = robotSleeping;
   String response;
   serializeJson(out, response);
   server.send(200, "application/json", response);
@@ -582,8 +678,10 @@ void ensureWifiConnected() {
 void setupHttpServer() {
   server.on("/health", HTTP_GET, handleHealth);
   server.on("/action", HTTP_POST, handleAction);
+  server.on("/angle", HTTP_POST, handleAngle);
   server.on("/face", HTTP_POST, handleFace);
   server.on("/speak", HTTP_POST, handleSpeak);
+  server.on("/sleep", HTTP_POST, handleSleep);
   server.on("/stop", HTTP_POST, handleStop);
   server.on("/volume", HTTP_POST, handleVolume);
   server.onNotFound([]() {
