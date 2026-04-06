@@ -77,7 +77,6 @@ FRENCH_HINTS = {
 ACTIVATE_CONTINUOUS_PATTERNS = (
     r"\bactive (la )?(conversation|discussion|ecoute|écoute) continue\b",
     r"\bpasse en mode (conversation|discussion|ecoute|écoute) continue\b",
-    r"\bmode (conversation|discussion|ecoute|écoute) continue\b",
 )
 DEACTIVATE_CONTINUOUS_PATTERNS = (
     r"\bd[ée]sactive (la )?(conversation|discussion|ecoute|écoute) continue\b",
@@ -171,6 +170,7 @@ runtime_state = {
     "last_interaction_at": None,
     "assistant_speaking": False,
     "speech_until": None,
+    "volume": 0.72,
 }
 
 
@@ -501,6 +501,14 @@ def stop_robot_speaking() -> dict:
     return result
 
 
+def set_robot_volume(volume: float) -> dict:
+    clamped = max(0.0, min(1.2, float(volume)))
+    result = send_esp32_json("volume", {"volume": clamped}, timeout=4)
+    if result.get("ok"):
+        runtime_state["volume"] = clamped
+    return result
+
+
 def send_robot_action(action: str) -> dict | None:
     if action not in ALLOWED_ACTIONS or action == "none":
         return None
@@ -681,6 +689,19 @@ def api_stop_speaking():
     result = stop_robot_speaking()
     log_event("INFO", "Speaking interrupted")
     return jsonify({"ok": True, "robot": result})
+
+
+@app.route("/api/volume", methods=["POST", "OPTIONS"])
+def api_volume():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    body = parse_json_body()
+    try:
+        volume = float(body.get("volume", runtime_state["volume"]))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Volume invalide"}), 400
+    result = set_robot_volume(volume)
+    return jsonify({"ok": True, "volume": runtime_state["volume"], "robot": result})
 
 
 @app.route("/api/ask", methods=["POST", "OPTIONS"])

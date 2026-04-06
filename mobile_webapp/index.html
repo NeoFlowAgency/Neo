@@ -363,6 +363,13 @@
             </div>
           </div>
 
+          <div class="section">
+            <div class="section-label">Volume</div>
+            <div class="row" style="align-items:center;">
+              <input id="volumeSlider" type="range" min="0.2" max="1.2" step="0.02" value="0.72" style="width:100%;" />
+            </div>
+          </div>
+
           <div class="facts">
             <div class="fact">
               <strong>Mode actuel</strong>
@@ -441,6 +448,7 @@
     const refreshBtn = document.getElementById("refreshBtn");
     const wakeModeBtn = document.getElementById("wakeModeBtn");
     const continuousModeBtn = document.getElementById("continuousModeBtn");
+    const volumeSlider = document.getElementById("volumeSlider");
     const statusLine = document.getElementById("statusLine");
     const audioPlayer = document.getElementById("audioPlayer");
 
@@ -457,7 +465,6 @@
     const factListenerOnline = document.getElementById("factListenerOnline");
     const factLanguage = document.getElementById("factLanguage");
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let mediaRecorder = null;
     let mediaChunks = [];
     let isRecording = false;
@@ -563,6 +570,7 @@
         factListeningMode.textContent = data.listener?.mode || "-";
         factListenerOnline.textContent = data.listener?.online ? "Connecte" : "Hors ligne";
         factLanguage.textContent = data.state?.last_language || "-";
+        volumeSlider.value = data.state?.volume || 0.72;
         setModeButtons(data.listener?.mode || "wake");
       } catch (error) {
         applyStatus(jarvisStatusEl, false);
@@ -620,6 +628,20 @@
       }
     }
 
+    let volumeTimer = null;
+    function queueVolumeUpdate() {
+      clearTimeout(volumeTimer);
+      volumeTimer = setTimeout(async () => {
+        try {
+          await postJson("/api/volume", { volume: Number(volumeSlider.value) });
+          setStatus(`Volume regle sur ${Number(volumeSlider.value).toFixed(2)}.`);
+          await refreshStatus();
+        } catch (error) {
+          setStatus(`Erreur volume: ${error.message}`);
+        }
+      }, 120);
+    }
+
     async function transcribeBlob(blob) {
       const form = new FormData();
       form.append("audio", blob, "voice.webm");
@@ -629,34 +651,6 @@
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       return data.text || "";
-    }
-
-    function startSpeechRecognition() {
-      if (!SpeechRecognition) return false;
-
-      const recognition = new SpeechRecognition();
-      recognition.lang = navigator.language || "fr-FR";
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-      micBtn.disabled = true;
-      setStatus("Ecoute via Web Speech...");
-
-      recognition.onresult = async (event) => {
-        const transcript = event.results[0][0].transcript || "";
-        promptInput.value = transcript;
-        await askJarvis(transcript);
-      };
-
-      recognition.onerror = (event) => {
-        setStatus(`Web Speech indisponible (${event.error}), fallback audio...`);
-      };
-
-      recognition.onend = () => {
-        micBtn.disabled = false;
-      };
-
-      recognition.start();
-      return true;
     }
 
     async function toggleRecorderFallback() {
@@ -713,6 +707,7 @@
     });
     wakeModeBtn.addEventListener("click", () => setListeningMode("wake"));
     continuousModeBtn.addEventListener("click", () => setListeningMode("continuous"));
+    volumeSlider.addEventListener("input", queueVolumeUpdate);
 
     promptInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
@@ -723,10 +718,7 @@
 
     micBtn.addEventListener("click", async () => {
       try {
-        const started = startSpeechRecognition();
-        if (!started) {
-          await toggleRecorderFallback();
-        }
+        await toggleRecorderFallback();
       } catch (error) {
         setStatus(`Erreur micro: ${error.message}`);
       }

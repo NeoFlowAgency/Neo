@@ -53,6 +53,14 @@ WAKE_PATTERNS = [
     r"\bneo\b",
 ]
 
+STOP_ONLY_PATTERNS = [
+    r"^\s*stop\s*$",
+    r"^\s*tais toi\s*$",
+    r"^\s*ta gueule\s*$",
+    r"^\s*silence\s*$",
+    r"^\s*shut up\s*$",
+]
+
 
 def rms_int16(samples: np.ndarray) -> float:
     if samples.size == 0:
@@ -137,6 +145,28 @@ def stop_backend_speaking(backend_url: str) -> None:
         pass
 
 
+def set_backend_mode(backend_url: str, mode: str) -> None:
+    try:
+        requests.post(f"{backend_url.rstrip('/')}/api/listening-mode", json={"mode": mode}, timeout=5)
+    except requests.RequestException:
+        pass
+
+
+def is_stop_only(text: str) -> bool:
+    lowered = text.strip().lower()
+    return any(re.search(pattern, lowered) for pattern in STOP_ONLY_PATTERNS)
+
+
+def drain_queue(q: "queue.Queue[np.ndarray]", max_items: int = 24) -> None:
+    drained = 0
+    while drained < max_items:
+        try:
+            q.get_nowait()
+            drained += 1
+        except queue.Empty:
+            break
+
+
 def capture_until_silence(q: "queue.Queue[np.ndarray]", cfg: Config, include_first: list[np.ndarray] | None = None) -> np.ndarray:
     frames = list(include_first or [])
     started_at = time.time()
@@ -199,7 +229,8 @@ def main() -> int:
     wake_samples_target = int(cfg.sample_rate * cfg.wake_chunk_sec)
     wake_overlap_samples = int(cfg.sample_rate * cfg.wake_overlap_sec)
     wake_buffer = np.empty((0,), dtype=np.int16)
-    current_mode = fetch_mode(cfg.backend_url)
+    set_backend_mode(cfg.backend_url, "wake")
+    current_mode = "wake"
     last_ping_at = 0.0
     last_poll_at = 0.0
     speaking_until = 0.0
@@ -233,11 +264,14 @@ def main() -> int:
                 print("[Interrupt] User voice detected, stopping Jarvis.")
                 stop_backend_speaking(cfg.backend_url)
                 speaking_until = 0.0
+                drain_queue(q)
                 phrase_pcm = capture_until_silence(q, cfg, include_first=[frame])
                 prompt, prompt_language = transcribe_int16_pcm(command_model, phrase_pcm)
                 if prompt:
                     print(f"[InterruptPrompt] {prompt}")
-                    speaking_until = time.time() + handle_prompt(prompt, cfg, prompt_language) + 0.2
+                    if not is_stop_only(prompt):
+                        speaking_until = time.time() + handle_prompt(prompt, cfg, prompt_language) + 0.2
+                drain_queue(q)
                 continue
 
             if current_mode == "continuous":
@@ -248,6 +282,7 @@ def main() -> int:
                 if prompt:
                     print(f"[Continuous] {prompt}")
                     speaking_until = time.time() + handle_prompt(prompt, cfg, prompt_language) + 0.2
+                    drain_queue(q)
                 continue
 
             wake_buffer = np.concatenate([wake_buffer, frame])
@@ -266,6 +301,7 @@ def main() -> int:
             inline_prompt = strip_wake_words(wake_text)
             if inline_prompt:
                 speaking_until = time.time() + handle_prompt(inline_prompt, cfg, wake_language) + 0.2
+                drain_queue(q)
                 continue
 
             print("[JarvisListener] Wake word detected. Listening...")
@@ -277,6 +313,7 @@ def main() -> int:
                 continue
 
             speaking_until = time.time() + handle_prompt(prompt, cfg, prompt_language) + 0.2
+            drain_queue(q)
 
 
 if __name__ == "__main__":

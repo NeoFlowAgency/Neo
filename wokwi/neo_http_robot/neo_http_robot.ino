@@ -17,6 +17,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include "driver/i2s.h"
+#include <math.h>
 
 const char* WIFI_SSID = "Freebox-C82B11";
 const char* WIFI_PASSWORD = "FREEGRELIER44";
@@ -54,6 +55,8 @@ unsigned long lastFaceRedraw = 0;
 volatile bool audioPlaying = false;
 volatile bool stopAudioRequested = false;
 TaskHandle_t audioTaskHandle = nullptr;
+float currentVolume = 0.72f;
+unsigned long lastThinkingChimeAt = 0;
 
 struct SpeakJob {
   String action;
@@ -133,9 +136,8 @@ void drawFace() {
       pupilOffsetXRight = 12;
       display.drawLine(20, 17, 46, 15, SSD1306_WHITE);
       display.drawLine(82, 15, 108, 17, SSD1306_WHITE);
-      display.fillCircle(60, 11, 2, SSD1306_WHITE);
-      display.fillCircle(67, 8, 2, SSD1306_WHITE);
-      display.fillCircle(74, 12, 2, SSD1306_WHITE);
+      display.drawLine(55, 10, 62, 10, SSD1306_WHITE);
+      display.drawLine(66, 10, 73, 10, SSD1306_WHITE);
     } else if (currentFace == "speaking") {
       eyeY = 19;
       eyeH = 25;
@@ -181,6 +183,24 @@ void setFace(const String& face) {
   blinkClosed = false;
   lastFaceRedraw = millis();
   drawFace();
+}
+
+void playThinkingChime() {
+  if (millis() - lastThinkingChimeAt < 900) return;
+  lastThinkingChimeAt = millis();
+
+  const int sampleCount = 1800;
+  int16_t buffer[sampleCount];
+  for (int i = 0; i < sampleCount; i++) {
+    float t = (float)i / AUDIO_SAMPLE_RATE;
+    float freq = (i < sampleCount / 2) ? 660.0f : 880.0f;
+    float env = 1.0f - ((float)i / sampleCount);
+    float sample = sinf(2.0f * PI * freq * t) * env * currentVolume * 1800.0f;
+    buffer[i] = (int16_t)sample;
+  }
+  size_t bw = 0;
+  i2s_write(I2S_NUM_0, buffer, sizeof(buffer), &bw, portMAX_DELAY);
+  i2s_zero_dma_buffer(I2S_NUM_0);
 }
 
 void setupOLED() {
@@ -334,6 +354,14 @@ bool playWavFromUrl(const String& url) {
     int toRead = min((int)sizeof(buf), available);
     int r = stream->readBytes(buf, toRead);
     if (r > 0) {
+      int16_t* samples = reinterpret_cast<int16_t*>(buf);
+      int sampleCount = r / 2;
+      for (int i = 0; i < sampleCount; i++) {
+        float scaled = samples[i] * currentVolume;
+        if (scaled > 32767.0f) scaled = 32767.0f;
+        if (scaled < -32768.0f) scaled = -32768.0f;
+        samples[i] = (int16_t)scaled;
+      }
       i2s_write(I2S_NUM_0, buf, r, &bw, portMAX_DELAY);
     }
 
@@ -462,6 +490,9 @@ void handleFace() {
   }
 
   setFace(face);
+  if (face == "thinking") {
+    playThinkingChime();
+  }
 
   DynamicJsonDocument out(160);
   out["ok"] = true;
@@ -506,6 +537,25 @@ void handleStop() {
   server.send(200, "application/json", response);
 }
 
+void handleVolume() {
+  DynamicJsonDocument doc(256);
+  auto err = deserializeJson(doc, server.arg("plain"));
+  if (err) {
+    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+    return;
+  }
+
+  float requested = doc["volume"] | currentVolume;
+  currentVolume = constrain(requested, 0.0f, 1.2f);
+
+  DynamicJsonDocument out(160);
+  out["ok"] = true;
+  out["volume"] = currentVolume;
+  String response;
+  serializeJson(out, response);
+  server.send(200, "application/json", response);
+}
+
 void connectWifiBlocking() {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
@@ -535,6 +585,7 @@ void setupHttpServer() {
   server.on("/face", HTTP_POST, handleFace);
   server.on("/speak", HTTP_POST, handleSpeak);
   server.on("/stop", HTTP_POST, handleStop);
+  server.on("/volume", HTTP_POST, handleVolume);
   server.onNotFound([]() {
     server.send(404, "application/json", "{\"error\":\"Not Found\"}");
   });
