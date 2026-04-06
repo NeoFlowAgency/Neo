@@ -1,10 +1,10 @@
 param(
   [string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot),
   [string]$Esp32Url = "http://192.168.1.147",
-  [string]$OllamaModel = "gemma4:e4b",
+  [string]$OllamaLightModel = "gemma4:e4b",
+  [string]$OllamaHeavyModel = "qwen2.5:14b",
   [string]$OllamaUrl = "http://127.0.0.1:11434/api/generate",
   [int]$BackendPort = 5000,
-  [int]$WebPort = 8080,
   [Alias("JarvisMode","Jarvis","Jarvice")]
   [switch]$JarviceMode
 )
@@ -34,7 +34,6 @@ if (-not (Test-Path $venvActivate)) {
   throw "Environnement Python introuvable: $venvActivate"
 }
 
-# 1) Ollama
 if (-not (Test-PortListening -Port 11434)) {
   Write-Host "[START] Ollama..."
   Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Minimized `
@@ -42,18 +41,19 @@ if (-not (Test-PortListening -Port 11434)) {
     -RedirectStandardError (Join-Path $logsDir "ollama.err.log")
   Start-Sleep -Seconds 2
 } else {
-  Write-Host "[OK] Ollama déjà actif sur 11434"
+  Write-Host "[OK] Ollama deja actif sur 11434"
 }
 
-# 2) Backend Flask
 if (-not (Test-PortListening -Port $BackendPort)) {
-  Write-Host "[START] Backend Flask..."
+  Write-Host "[START] Backend Jarvis..."
   $backendCmd = @"
 Set-Location '$ProjectRoot'
 . '$venvActivate'
 `$env:OLLAMA_URL = '$OllamaUrl'
-`$env:OLLAMA_MODEL = '$OllamaModel'
+`$env:OLLAMA_MODEL_LIGHT = '$OllamaLightModel'
+`$env:OLLAMA_MODEL_HEAVY = '$OllamaHeavyModel'
 `$env:ESP32_URL = '$Esp32Url'
+`$env:PORT = '$BackendPort'
 python .\robot_server.py
 "@
 
@@ -67,32 +67,12 @@ python .\robot_server.py
 
   Start-Sleep -Seconds 2
 } else {
-  Write-Host "[OK] Backend déjà actif sur $BackendPort"
+  Write-Host "[OK] Backend deja actif sur $BackendPort"
 }
 
-# 3) Web app static server
-if (-not (Test-PortListening -Port $WebPort)) {
-  Write-Host "[START] Web app server..."
-  $webRoot = Join-Path $ProjectRoot "mobile_webapp"
-  $webCmd = "Set-Location '$webRoot'; python -m http.server $WebPort --bind 0.0.0.0"
-
-  Start-Process -FilePath "powershell" -ArgumentList @(
-    "-NoProfile",
-    "-ExecutionPolicy", "Bypass",
-    "-Command", $webCmd
-  ) -WindowStyle Minimized `
-    -RedirectStandardOutput (Join-Path $logsDir "web.out.log") `
-    -RedirectStandardError (Join-Path $logsDir "web.err.log")
-
-  Start-Sleep -Seconds 1
-} else {
-  Write-Host "[OK] Web app déjà active sur $WebPort"
-}
-
-# 4) Optional Jarvice always-listening mode
 if ($JarviceMode) {
   if (Test-JarviceRunning) {
-    Write-Host "[OK] Jarvice déjà actif"
+    Write-Host "[OK] Jarvice deja actif"
   } else {
     Write-Host "[START] Jarvice mode..."
     $jarviceCmd = @"
@@ -101,6 +81,7 @@ Set-Location '$ProjectRoot'
 `$env:JARVICE_BACKEND = 'http://127.0.0.1:$BackendPort'
 python .\\jarvice_mode.py
 "@
+
     Start-Process -FilePath "powershell" -ArgumentList @(
       "-NoProfile",
       "-ExecutionPolicy", "Bypass",
@@ -114,14 +95,15 @@ python .\\jarvice_mode.py
 }
 
 Write-Host ""
-Write-Host "=== NEO démarré ==="
-Write-Host "Backend : http://127.0.0.1:$BackendPort/health"
-Write-Host "Web app : http://127.0.0.1:$WebPort"
-Write-Host "Téléphone : http://<IP_PC>:$WebPort"
+Write-Host "=== JARVIS demarre ==="
+Write-Host "Dashboard : http://127.0.0.1:$BackendPort"
+Write-Host "Health    : http://127.0.0.1:$BackendPort/health"
+Write-Host "Mobile/LAN: http://<IP_PC>:$BackendPort"
 Write-Host "ESP32 URL : $Esp32Url"
-Write-Host "Logs     : $logsDir"
+Write-Host "Models    : light=$OllamaLightModel | heavy=$OllamaHeavyModel"
+Write-Host "Logs      : $logsDir"
 if ($JarviceMode) {
-  Write-Host "Jarvice  : actif (wake word local)"
+  Write-Host "Jarvice   : actif (wake word local)"
 } else {
-  Write-Host "Jarvice  : inactif (ajoute -JarviceMode)"
+  Write-Host "Jarvice   : inactif (ajoute -JarviceMode)"
 }

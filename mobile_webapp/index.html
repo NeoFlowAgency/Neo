@@ -2,169 +2,606 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>NEO Voice Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jarvis Local Dashboard</title>
   <style>
-    body { margin: 0; font-family: system-ui, sans-serif; background: #0b1020; color: #f3f4f6; }
-    .app { max-width: 760px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
-    header { padding: 12px 14px; border-bottom: 1px solid #1f2937; position: sticky; top: 0; background: #0b1020; }
-    .row { display: flex; gap: 8px; align-items: center; }
-    input, button { font-size: 16px; }
-    #serverUrl { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #374151; background: #111827; color: #fff; }
-    .chat { flex: 1; padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-    .bubble { max-width: 84%; padding: 10px 12px; border-radius: 12px; line-height: 1.35; white-space: pre-wrap; }
-    .user { align-self: flex-end; background: #2563eb; }
-    .neo { align-self: flex-start; background: #1f2937; }
-    .meta { font-size: 12px; opacity: .8; margin-top: 6px; }
-    footer { border-top: 1px solid #1f2937; padding: 12px; display: grid; gap: 8px; }
-    #textInput { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #374151; background: #111827; color: #fff; }
-    .controls { display: flex; gap: 8px; }
-    .btn { flex: 1; padding: 12px; border-radius: 10px; border: none; font-weight: 700; }
-    #talkBtn { background: #22c55e; color: #052e16; }
-    #sendBtn { background: #38bdf8; color: #082f49; }
-    #status { font-size: 13px; opacity: .85; }
-    audio { width: 100%; }
+    :root {
+      --bg: #08111a;
+      --bg-alt: #0f1d2b;
+      --panel: rgba(18, 33, 49, 0.9);
+      --panel-border: rgba(120, 172, 217, 0.18);
+      --text: #e8f0f7;
+      --muted: #98aec2;
+      --accent: #7ec7ff;
+      --accent-strong: #37a2ff;
+      --good: #66e0a3;
+      --bad: #ff7d7d;
+      --warn: #ffd27d;
+      --shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top, rgba(55, 162, 255, 0.16), transparent 32%),
+        linear-gradient(180deg, #06101a 0%, #0a1622 100%);
+    }
+
+    .app {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero {
+      padding: 24px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, rgba(21, 39, 57, 0.96), rgba(10, 21, 33, 0.92));
+      border: 1px solid var(--panel-border);
+      box-shadow: var(--shadow);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(32px, 6vw, 56px);
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+    }
+
+    .subtitle {
+      margin-top: 10px;
+      color: var(--muted);
+      max-width: 720px;
+      line-height: 1.5;
+    }
+
+    .hero-status {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .status-pill {
+      min-width: 130px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--panel-border);
+      background: rgba(9, 18, 29, 0.74);
+    }
+
+    .status-pill strong {
+      display: block;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .status-value.good { color: var(--good); }
+    .status-value.bad { color: var(--bad); }
+    .status-value.warn { color: var(--warn); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.25fr 0.95fr;
+      gap: 18px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 18px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      backdrop-filter: blur(10px);
+    }
+
+    .panel h2 {
+      margin: 0 0 6px;
+      font-size: 18px;
+    }
+
+    .panel p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .log {
+      margin-top: 16px;
+      display: grid;
+      gap: 10px;
+      max-height: 470px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .entry {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(6, 13, 20, 0.78);
+      border: 1px solid rgba(120, 172, 217, 0.1);
+    }
+
+    .entry.user {
+      border-color: rgba(126, 199, 255, 0.28);
+    }
+
+    .entry.assistant {
+      border-color: rgba(102, 224, 163, 0.2);
+    }
+
+    .entry-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .entry-text {
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    .meta {
+      margin-top: 8px;
+      color: var(--accent);
+      font-size: 13px;
+    }
+
+    .composer {
+      margin-top: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 110px;
+      resize: vertical;
+      border: 1px solid rgba(120, 172, 217, 0.16);
+      border-radius: 16px;
+      background: rgba(4, 10, 16, 0.78);
+      color: var(--text);
+      font: inherit;
+      padding: 14px;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+      border-radius: 999px;
+      padding: 12px 16px;
+      color: #03111d;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      box-shadow: 0 10px 24px rgba(55, 162, 255, 0.18);
+    }
+
+    button.secondary {
+      background: rgba(14, 29, 43, 0.9);
+      color: var(--text);
+      border: 1px solid rgba(120, 172, 217, 0.16);
+      box-shadow: none;
+    }
+
+    button.warn {
+      background: linear-gradient(135deg, #ffd27d, #ffb35c);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .section {
+      margin-top: 16px;
+    }
+
+    .section-label {
+      margin-bottom: 10px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+    }
+
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .facts {
+      margin-top: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .fact {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(7, 14, 22, 0.7);
+      border: 1px solid rgba(120, 172, 217, 0.1);
+    }
+
+    .fact strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--accent);
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .status-line {
+      margin-top: 12px;
+      min-height: 20px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    audio {
+      width: 100%;
+      margin-top: 10px;
+      filter: saturate(0.9) brightness(1.1);
+    }
+
+    @media (max-width: 1024px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .app {
+        padding: 14px;
+      }
+
+      .button-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
   </style>
 </head>
 <body>
   <div class="app">
-    <header>
-      <div class="row">
-        <input id="serverUrl" value="http://192.168.1.9:5000" />
+    <section class="hero">
+      <div>
+        <div class="eyebrow">Jarvis V1 / Local Control</div>
+        <h1>Jarvis,<br />sur ton bureau.</h1>
+        <p class="subtitle">
+          Discussion vocale locale, servo sur l'ESP32, yeux OLED et reponses audio envoyees
+          au robot. Version simple, propre et concentree sur ton vrai hardware.
+        </p>
       </div>
-      <div id="status">Prêt</div>
-    </header>
-
-    <main id="chat" class="chat"></main>
-
-    <footer>
-      <input id="textInput" placeholder="Écris ici ou appuie sur Parler..." />
-      <div class="controls">
-        <button id="talkBtn" class="btn">🎤 Parler</button>
-        <button id="sendBtn" class="btn">Envoyer</button>
+      <div class="hero-status">
+        <div class="status-pill">
+          <strong>Jarvis</strong>
+          <div id="jarvisStatus" class="status-value warn">Verification...</div>
+        </div>
+        <div class="status-pill">
+          <strong>Ollama</strong>
+          <div id="ollamaStatus" class="status-value warn">Verification...</div>
+        </div>
+        <div class="status-pill">
+          <strong>ESP32</strong>
+          <div id="esp32Status" class="status-value warn">Verification...</div>
+        </div>
       </div>
-      <audio id="audio" controls></audio>
-    </footer>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2>Conversation</h2>
+        <p>Parle a Jarvis, vois la transcription et garde une trace simple des echanges.</p>
+
+        <div id="history" class="log"></div>
+
+        <div class="composer">
+          <textarea id="promptInput" placeholder="Ecris ici ou utilise le micro de ton PC..."></textarea>
+          <div class="row">
+            <button id="sendBtn">Envoyer a Jarvis</button>
+            <button id="micBtn" class="secondary">Parler</button>
+            <button id="refreshBtn" class="secondary">Rafraichir</button>
+          </div>
+          <div id="statusLine" class="status-line">Pret.</div>
+          <audio id="audioPlayer" controls></audio>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="panel">
+          <h2>Corps du robot</h2>
+          <p>Actions manuelles rapides pour verifier le servo et garder le controle.</p>
+          <div class="section">
+            <div class="section-label">Mouvements</div>
+            <div class="button-grid">
+              <button data-action="turn_left">Gauche</button>
+              <button data-action="center" class="secondary">Centre</button>
+              <button data-action="turn_right">Droite</button>
+              <button data-action="nod" class="secondary">Nod</button>
+              <button data-action="none" class="secondary">Pause</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Expressions OLED</h2>
+          <p>Choisis l'etat du visage quand tu veux tester le rendu sur l'ecran.</p>
+          <div class="section">
+            <div class="section-label">Visage</div>
+            <div class="button-grid">
+              <button data-face="neutral" class="secondary">Neutral</button>
+              <button data-face="listening" class="secondary">Listening</button>
+              <button data-face="thinking" class="secondary">Thinking</button>
+              <button data-face="speaking" class="secondary">Speaking</button>
+              <button data-face="happy">Happy</button>
+              <button data-face="sleepy" class="secondary">Sleepy</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Etat local</h2>
+          <p>Ce que Jarvis vient de comprendre, choisir et envoyer au robot.</p>
+          <div class="facts">
+            <div class="fact">
+              <strong>Derniere transcription</strong>
+              <div id="factTranscript">-</div>
+            </div>
+            <div class="fact">
+              <strong>Derniere reponse</strong>
+              <div id="factReply">-</div>
+            </div>
+            <div class="fact">
+              <strong>Modele utilise</strong>
+              <div id="factModel">-</div>
+            </div>
+            <div class="fact">
+              <strong>Action / visage</strong>
+              <div id="factAction">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 
   <script>
-    const chatEl = document.getElementById('chat');
-    const statusEl = document.getElementById('status');
-    const serverUrlEl = document.getElementById('serverUrl');
-    const textInputEl = document.getElementById('textInput');
-    const talkBtn = document.getElementById('talkBtn');
-    const sendBtn = document.getElementById('sendBtn');
-    const audioEl = document.getElementById('audio');
+    const historyEl = document.getElementById("history");
+    const promptInput = document.getElementById("promptInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const micBtn = document.getElementById("micBtn");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const statusLine = document.getElementById("statusLine");
+    const audioPlayer = document.getElementById("audioPlayer");
+
+    const jarvisStatusEl = document.getElementById("jarvisStatus");
+    const ollamaStatusEl = document.getElementById("ollamaStatus");
+    const esp32StatusEl = document.getElementById("esp32Status");
+
+    const factTranscript = document.getElementById("factTranscript");
+    const factReply = document.getElementById("factReply");
+    const factModel = document.getElementById("factModel");
+    const factAction = document.getElementById("factAction");
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
     let mediaRecorder = null;
     let mediaChunks = [];
     let isRecording = false;
+    let latestHistoryKey = "";
 
-    function baseUrl() {
-      return serverUrlEl.value.trim().replace(/\/$/, '');
+    function setStatus(text) {
+      statusLine.textContent = text;
     }
 
-    function setStatus(msg) {
-      statusEl.textContent = msg;
+    function statusValue(ok, fallback = "Verification...") {
+      if (ok === true) return { text: "En ligne", className: "status-value good" };
+      if (ok === false) return { text: "Hors ligne", className: "status-value bad" };
+      return { text: fallback, className: "status-value warn" };
     }
 
-    function addBubble(text, role, action = null) {
-      const div = document.createElement('div');
-      div.className = `bubble ${role}`;
-      div.textContent = text;
+    function applyStatus(el, ok, fallback) {
+      const value = statusValue(ok, fallback);
+      el.textContent = value.text;
+      el.className = value.className;
+    }
 
-      if (action) {
-        const meta = document.createElement('div');
-        meta.className = 'meta';
-        meta.textContent = `Action: ${action}`;
-        div.appendChild(meta);
+    function formatDate(ts) {
+      if (!ts) return "-";
+      return new Date(ts * 1000).toLocaleString("fr-FR");
+    }
+
+    function renderHistory(entries) {
+      const key = JSON.stringify(entries.map((item) => [item.id, item.timestamp]));
+      if (key === latestHistoryKey) return;
+      latestHistoryKey = key;
+      historyEl.innerHTML = "";
+
+      if (!entries.length) {
+        historyEl.innerHTML = '<div class="entry"><div class="entry-text">Aucun echange pour le moment.</div></div>';
+        return;
       }
 
-      chatEl.appendChild(div);
-      chatEl.scrollTop = chatEl.scrollHeight;
+      entries.forEach((item) => {
+        const entry = document.createElement("article");
+        entry.className = `entry ${item.role === "assistant" ? "assistant" : "user"}`;
+
+        const top = document.createElement("div");
+        top.className = "entry-top";
+        top.innerHTML = `<span>${item.role === "assistant" ? "Jarvis" : "Toi"}</span><span>${formatDate(item.timestamp)}</span>`;
+
+        const text = document.createElement("div");
+        text.className = "entry-text";
+        text.textContent = item.text || "";
+
+        entry.appendChild(top);
+        entry.appendChild(text);
+
+        if (item.meta) {
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          meta.textContent = `Action: ${item.meta.action || "none"} | Visage: ${item.meta.face || "neutral"} | Modele: ${item.meta.model || "-"}`;
+          entry.appendChild(meta);
+        }
+
+        historyEl.appendChild(entry);
+      });
+
+      historyEl.scrollTop = historyEl.scrollHeight;
     }
 
-    async function askServer(prompt) {
-      const url = `${baseUrl()}/ask`;
-      setStatus('Envoi au cerveau local...');
+    async function refreshStatus() {
+      try {
+        const res = await fetch("/api/status");
+        const data = await res.json();
+
+        applyStatus(jarvisStatusEl, true);
+        applyStatus(ollamaStatusEl, !!data.ollama?.ok);
+        applyStatus(esp32StatusEl, !!data.esp32?.ok);
+
+        factTranscript.textContent = data.state?.last_transcript || "-";
+        factReply.textContent = data.state?.last_reply || "-";
+        factModel.textContent = data.state?.last_model || "-";
+        factAction.textContent = `${data.state?.last_action || "none"} / ${data.state?.last_face || "neutral"}`;
+      } catch (error) {
+        applyStatus(jarvisStatusEl, false);
+        applyStatus(ollamaStatusEl, null, "Indisponible");
+        applyStatus(esp32StatusEl, null, "Indisponible");
+        setStatus(`Backend indisponible: ${error.message}`);
+      }
+    }
+
+    async function refreshHistory() {
+      try {
+        const res = await fetch("/api/history");
+        const data = await res.json();
+        renderHistory(Array.isArray(data) ? data : []);
+      } catch (error) {
+        setStatus(`Historique indisponible: ${error.message}`);
+      }
+    }
+
+    async function postJson(url, payload) {
       const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
       return data;
     }
 
-    async function transcribeAudio(blob) {
-      const url = `${baseUrl()}/transcribe`;
-      setStatus('Transcription audio locale...');
-      const form = new FormData();
-      form.append('audio', blob, 'voice.webm');
-      const res = await fetch(url, { method: 'POST', body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      return data.text || '';
-    }
-
-    async function processPrompt(prompt) {
-      const cleaned = (prompt || '').trim();
+    async function askJarvis(prompt) {
+      const cleaned = prompt.trim();
       if (!cleaned) return;
 
-      addBubble(cleaned, 'user');
-      textInputEl.value = '';
+      setStatus("Jarvis reflechit...");
+      sendBtn.disabled = true;
+      micBtn.disabled = true;
 
       try {
-        const data = await askServer(cleaned);
-        addBubble(data.text || '(vide)', 'neo', data.action || 'none');
-
+        const data = await postJson("/api/ask", { prompt: cleaned });
+        promptInput.value = "";
         if (data.audio_url) {
-          audioEl.src = data.audio_url;
-          try { await audioEl.play(); } catch (_) {}
+          audioPlayer.src = data.audio_url;
+          try { await audioPlayer.play(); } catch (_) {}
         }
-
-        setStatus('OK');
-      } catch (err) {
-        addBubble(`Erreur: ${err.message}`, 'neo');
-        setStatus('Erreur');
+        setStatus(`Reponse envoyee au robot via ${data.model}.`);
+        await refreshHistory();
+        await refreshStatus();
+      } catch (error) {
+        setStatus(`Erreur: ${error.message}`);
+      } finally {
+        sendBtn.disabled = false;
+        micBtn.disabled = false;
       }
+    }
+
+    async function transcribeBlob(blob) {
+      const form = new FormData();
+      form.append("audio", blob, "voice.webm");
+      const res = await fetch("/api/transcribe", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      return data.text || "";
     }
 
     function startSpeechRecognition() {
       if (!SpeechRecognition) return false;
 
-      const rec = new SpeechRecognition();
-      rec.lang = 'fr-FR';
-      rec.interimResults = false;
-      rec.maxAlternatives = 1;
+      const recognition = new SpeechRecognition();
+      recognition.lang = "fr-FR";
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
 
-      setStatus('Écoute (Web Speech)...');
-      talkBtn.disabled = true;
+      micBtn.disabled = true;
+      setStatus("Ecoute via Web Speech...");
 
-      rec.onresult = async (event) => {
-        const transcript = event.results[0][0].transcript || '';
-        await processPrompt(transcript);
+      recognition.onresult = async (event) => {
+        const transcript = event.results[0][0].transcript || "";
+        promptInput.value = transcript;
+        await askJarvis(transcript);
       };
 
-      rec.onerror = (e) => {
-        setStatus(`Web Speech indisponible (${e.error}), fallback audio...`);
+      recognition.onerror = (event) => {
+        setStatus(`Web Speech indisponible (${event.error}), fallback audio...`);
       };
 
-      rec.onend = () => {
-        talkBtn.disabled = false;
+      recognition.onend = () => {
+        micBtn.disabled = false;
       };
 
-      rec.start();
+      recognition.start();
       return true;
     }
 
-    async function toggleMediaRecorderFallback() {
+    async function toggleRecorderFallback() {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setStatus("Micro navigateur indisponible (iPhone/HTTP). Utilise Safari HTTPS ou la dictée clavier iOS.");
-        textInputEl.focus();
+        setStatus("Micro navigateur indisponible.");
         return;
       }
 
@@ -173,58 +610,101 @@
         mediaChunks = [];
         mediaRecorder = new MediaRecorder(stream);
 
-        mediaRecorder.ondataavailable = (ev) => {
-          if (ev.data && ev.data.size > 0) mediaChunks.push(ev.data);
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            mediaChunks.push(event.data);
+          }
         };
 
         mediaRecorder.onstop = async () => {
-          const blob = new Blob(mediaChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+          const blob = new Blob(mediaChunks, { type: mediaRecorder.mimeType || "audio/webm" });
           try {
-            const text = await transcribeAudio(blob);
-            if (text) {
-              await processPrompt(text);
+            setStatus("Transcription locale...");
+            const text = await transcribeBlob(blob);
+            promptInput.value = text;
+            if (text.trim()) {
+              await askJarvis(text);
             } else {
-              setStatus('Aucune transcription détectée.');
+              setStatus("Aucune parole detectee.");
             }
-          } catch (err) {
-            addBubble(`Erreur transcription: ${err.message}`, 'neo');
-            setStatus('Erreur transcription');
+          } catch (error) {
+            setStatus(`Erreur transcription: ${error.message}`);
+          } finally {
+            stream.getTracks().forEach((track) => track.stop());
           }
         };
 
         mediaRecorder.start();
         isRecording = true;
-        talkBtn.textContent = '⏹️ Stop';
-        setStatus('Enregistrement audio...');
+        micBtn.textContent = "Stop";
+        setStatus("Enregistrement audio...");
       } else {
-        mediaRecorder.stop();
         isRecording = false;
-        talkBtn.textContent = '🎤 Parler';
+        micBtn.textContent = "Parler";
+        mediaRecorder.stop();
       }
     }
 
-    talkBtn.addEventListener('click', async () => {
+    sendBtn.addEventListener("click", () => askJarvis(promptInput.value));
+    refreshBtn.addEventListener("click", async () => {
+      await refreshStatus();
+      await refreshHistory();
+      setStatus("Vue rafraichie.");
+    });
+
+    promptInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        askJarvis(promptInput.value);
+      }
+    });
+
+    micBtn.addEventListener("click", async () => {
       try {
         const started = startSpeechRecognition();
         if (!started) {
-          await toggleMediaRecorderFallback();
+          await toggleRecorderFallback();
         }
-      } catch (err) {
-        addBubble(`Erreur micro: ${err.message}`, 'neo');
-        setStatus('Erreur micro');
+      } catch (error) {
+        setStatus(`Erreur micro: ${error.message}`);
       }
     });
 
-    sendBtn.addEventListener('click', async () => {
-      await processPrompt(textInputEl.value);
+    document.querySelectorAll("[data-action]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const action = button.getAttribute("data-action");
+        try {
+          await postJson("/api/action", { action });
+          setStatus(`Action envoyee: ${action}`);
+          await refreshStatus();
+        } catch (error) {
+          setStatus(`Erreur action: ${error.message}`);
+        }
+      });
     });
 
-    textInputEl.addEventListener('keydown', async (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        await processPrompt(textInputEl.value);
-      }
+    document.querySelectorAll("[data-face]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const face = button.getAttribute("data-face");
+        try {
+          await postJson("/api/face", { face });
+          setStatus(`Expression envoyee: ${face}`);
+          await refreshStatus();
+        } catch (error) {
+          setStatus(`Erreur visage: ${error.message}`);
+        }
+      });
     });
+
+    async function boot() {
+      await refreshStatus();
+      await refreshHistory();
+      setStatus("Pret.");
+      setInterval(refreshStatus, 5000);
+      setInterval(refreshHistory, 4000);
+    }
+
+    boot();
   </script>
 </body>
 </html>

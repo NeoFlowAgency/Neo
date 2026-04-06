@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+
+audio_out/
+logs/
+data/
+wokwi/neo_http_robot/
+
+.DS_Store
+Thumbs.db

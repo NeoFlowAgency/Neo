@@ -4,14 +4,9 @@ param(
 
 $ErrorActionPreference = 'SilentlyContinue'
 
-Write-Host "[STOP] Backend robot_server.py"
+Write-Host "[STOP] Backend Jarvis (robot_server.py)"
 Get-CimInstance Win32_Process | Where-Object {
   $_.CommandLine -match "robot_server.py"
-} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
-
-Write-Host "[STOP] Web server (python -m http.server 8080)"
-Get-CimInstance Win32_Process | Where-Object {
-  $_.CommandLine -match "python -m http.server 8080"
 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 
 Write-Host "[STOP] Jarvice mode (jarvice_mode.py)"
@@ -26,4 +21,4 @@ if ($StopOllama) {
   } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 }
 
-Write-Host "Terminé."
+Write-Host "Termine."
