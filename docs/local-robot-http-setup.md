@@ -207,3 +207,31 @@ Le firmware est prêt pour extension:
 - placeholder configuration audio I2S (`AudioConfig`),
 - ajout facile de nouvelles actions via `runAction`,
 - synchronisation voix+mouvement côté Python (ajouter timeline d'actions avant/pendant TTS).
+
+## 11) Démarrage en une seule commande (Windows PowerShell)
+
+Si tu ne veux plus ouvrir 3 terminaux à la main:
+
+```powershell
+cd C:\Users\<TON_USER>\Desktop\PROJETS\Neo
+powershell -ExecutionPolicy Bypass -File .\scripts\start_robot.ps1 -Esp32Url "http://192.168.1.147"
+```
+
+Le script démarre automatiquement:
+- Ollama (`11434`)
+- Backend Flask (`5000`)
+- Web app (`8080`)
+
+Et écrit les logs dans `.\logs`.
+
+### Arrêt des services
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stop_robot.ps1
+```
+
+Pour stopper aussi Ollama:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stop_robot.ps1 -StopOllama
+```
