@@ -170,6 +170,31 @@ def transcribe_audio_file(file_path: Path) -> str:
     return text
 
 
+def parse_json_body() -> dict:
+    """
+    Parse JSON body robustly, including Windows PowerShell UTF-16 payloads.
+    """
+    parsed = request.get_json(silent=True)
+    if isinstance(parsed, dict):
+        return parsed
+
+    raw = request.get_data(cache=False) or b""
+    if not raw:
+        return {}
+
+    # Try common encodings in order.
+    for encoding in ("utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be"):
+        try:
+            decoded = raw.decode(encoding)
+            obj = json.loads(decoded)
+            if isinstance(obj, dict):
+                return obj
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+
+    return {}
+
+
 @app.after_request
 def add_cors_headers(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
@@ -188,7 +213,7 @@ def ask_route():
     if request.method == "OPTIONS":
         return ("", 204)
 
-    body = request.get_json(silent=True) or {}
+    body = parse_json_body()
     prompt = str(body.get("prompt", "")).strip()
     if not prompt:
         return jsonify({"error": "'prompt' est obligatoire"}), 400

@@ -242,13 +242,31 @@ Le module `jarvice_mode.py` écoute le micro du PC, détecte le wake word, trans
 powershell -ExecutionPolicy Bypass -File .\scripts\stop_robot.ps1
 ```
 
+## 12) Dépannage PowerShell (POST /ask)
+
+Si `Invoke-RestMethod` renvoie `{"error":"'prompt' est obligatoire"}` alors que tu envoies bien `prompt`,
+tu es probablement sur Windows PowerShell 5 avec un corps JSON encodé différemment.
+
+Commande recommandée:
+
+```powershell
+$body = @{ prompt = "Tourne la tête à gauche" } | ConvertTo-Json -Compress
+Invoke-RestMethod `
+  -Uri "http://127.0.0.1:5000/ask" `
+  -Method Post `
+  -ContentType "application/json; charset=utf-8" `
+  -Body $body
+```
+
+Le backend gère désormais aussi les payloads JSON UTF-16 envoyés par PowerShell.
+
 Pour stopper aussi Ollama:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\stop_robot.ps1 -StopOllama
 ```
 
-## 12) Problèmes connus et corrections rapides
+## 13) Problèmes connus et corrections rapides
 
 - **Le robot rejoue toujours la même phrase**: vérifie que le backend est à jour (il renvoie maintenant un URL audio unique pour éviter le cache navigateur).
 - **Le son sort du casque PC et pas du robot**: le backend envoie désormais `POST /speak` à l'ESP32 avec `audio_url`; reflasher `wokwi/neo_http_robot.ino` est obligatoire pour cette fonction.

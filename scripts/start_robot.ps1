@@ -5,6 +5,7 @@ param(
   [string]$OllamaUrl = "http://127.0.0.1:11434/api/generate",
   [int]$BackendPort = 5000,
   [int]$WebPort = 8080,
+  [Alias("JarvisMode","Jarvis","Jarvice")]
   [switch]$JarviceMode
 )
 
@@ -14,6 +15,13 @@ function Test-PortListening {
   param([int]$Port)
   $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
   return $null -ne $conn
+}
+
+function Test-JarviceRunning {
+  $procs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.CommandLine -and $_.CommandLine -match "jarvice_mode.py"
+  }
+  return $null -ne $procs
 }
 
 $logsDir = Join-Path $ProjectRoot "logs"
@@ -83,22 +91,26 @@ if (-not (Test-PortListening -Port $WebPort)) {
 
 # 4) Optional Jarvice always-listening mode
 if ($JarviceMode) {
-  Write-Host "[START] Jarvice mode..."
-  $jarviceCmd = @"
+  if (Test-JarviceRunning) {
+    Write-Host "[OK] Jarvice déjà actif"
+  } else {
+    Write-Host "[START] Jarvice mode..."
+    $jarviceCmd = @"
 Set-Location '$ProjectRoot'
 . '$venvActivate'
 `$env:JARVICE_BACKEND = 'http://127.0.0.1:$BackendPort'
 python .\\jarvice_mode.py
 "@
-  Start-Process -FilePath "powershell" -ArgumentList @(
-    "-NoProfile",
-    "-ExecutionPolicy", "Bypass",
-    "-Command", $jarviceCmd
-  ) -WindowStyle Minimized `
-    -RedirectStandardOutput (Join-Path $logsDir "jarvice.out.log") `
-    -RedirectStandardError (Join-Path $logsDir "jarvice.err.log")
+    Start-Process -FilePath "powershell" -ArgumentList @(
+      "-NoProfile",
+      "-ExecutionPolicy", "Bypass",
+      "-Command", $jarviceCmd
+    ) -WindowStyle Minimized `
+      -RedirectStandardOutput (Join-Path $logsDir "jarvice.out.log") `
+      -RedirectStandardError (Join-Path $logsDir "jarvice.err.log")
 
-  Start-Sleep -Seconds 1
+    Start-Sleep -Seconds 1
+  }
 }
 
 Write-Host ""
@@ -110,4 +122,6 @@ Write-Host "ESP32 URL : $Esp32Url"
 Write-Host "Logs     : $logsDir"
 if ($JarviceMode) {
   Write-Host "Jarvice  : actif (wake word local)"
+} else {
+  Write-Host "Jarvice  : inactif (ajoute -JarviceMode)"
 }
