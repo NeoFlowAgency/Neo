@@ -26,11 +26,13 @@ from faster_whisper import WhisperModel
 class Config:
     sample_rate: int = int(os.environ.get("JARVICE_SAMPLE_RATE", "16000"))
     wake_chunk_sec: float = float(os.environ.get("JARVICE_WAKE_CHUNK_SEC", "1.8"))
+    wake_overlap_sec: float = float(os.environ.get("JARVICE_WAKE_OVERLAP_SEC", "0.9"))
     command_max_sec: float = float(os.environ.get("JARVICE_COMMAND_MAX_SEC", "10.0"))
     silence_rms_threshold: float = float(os.environ.get("JARVICE_SILENCE_RMS", "170"))
+    interrupt_rms_threshold: float = float(os.environ.get("JARVICE_INTERRUPT_RMS", "420"))
     silence_timeout_sec: float = float(os.environ.get("JARVICE_SILENCE_TIMEOUT", "1.0"))
     backend_url: str = os.environ.get("JARVICE_BACKEND", "http://127.0.0.1:5000")
-    wake_model: str = os.environ.get("JARVICE_WAKE_MODEL", "tiny")
+    wake_model: str = os.environ.get("JARVICE_WAKE_MODEL", "small")
     command_model: str = os.environ.get("JARVICE_COMMAND_MODEL", "small")
     ping_interval_sec: float = float(os.environ.get("JARVICE_PING_INTERVAL", "4.0"))
     poll_mode_interval_sec: float = float(os.environ.get("JARVICE_POLL_MODE_INTERVAL", "2.0"))
@@ -40,6 +42,12 @@ class Config:
 WAKE_PATTERNS = [
     r"\bok\s+jarvis\b",
     r"\bok\s+jarvice\b",
+    r"\bjarvisse\b",
+    r"\bjarviss\b",
+    r"\bjarvi\b",
+    r"\bjervis\b",
+    r"\bgervis\b",
+    r"\bgervais\b",
     r"\bjarvis\b",
     r"\bjarvice\b",
     r"\bneo\b",
@@ -52,19 +60,31 @@ def rms_int16(samples: np.ndarray) -> float:
     return float(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
 
 
-def transcribe_int16_pcm(model: WhisperModel, pcm: np.ndarray) -> str:
+def normalize_language(value: str | None) -> str | None:
+    if not value:
+        return None
+    lowered = value.strip().lower()
+    if lowered.startswith("fr"):
+        return "fr"
+    if lowered.startswith("en"):
+        return "en"
+    return None
+
+
+def transcribe_int16_pcm(model: WhisperModel, pcm: np.ndarray) -> tuple[str, str | None]:
     if pcm.size == 0:
-        return ""
+        return "", None
 
     float_audio = pcm.astype(np.float32) / 32768.0
-    segments, _ = model.transcribe(
+    segments, info = model.transcribe(
         float_audio,
         language=None,
         vad_filter=True,
         beam_size=1,
         condition_on_previous_text=False,
     )
-    return " ".join(segment.text.strip() for segment in segments if segment.text).strip()
+    text = " ".join(segment.text.strip() for segment in segments if segment.text).strip()
+    return text, normalize_language(getattr(info, "language", None))
 
 
 def has_wake_word(text: str) -> bool:
@@ -73,17 +93,17 @@ def has_wake_word(text: str) -> bool:
 
 
 def strip_wake_words(text: str) -> str:
-    cleaned = text.lower()
+    cleaned = text
     for pattern in WAKE_PATTERNS:
         cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,.!?;:")
     return cleaned.strip()
 
 
-def ask_backend(prompt: str, backend_url: str) -> dict:
+def ask_backend(prompt: str, backend_url: str, language: str | None = None) -> dict:
     response = requests.post(
         f"{backend_url.rstrip('/')}/api/ask",
-        json={"prompt": prompt},
+        json={"prompt": prompt, "language": language},
         timeout=120,
     )
     response.raise_for_status()
@@ -106,6 +126,13 @@ def push_ping(backend_url: str, mode: str) -> None:
             json={"mode": mode, "source": "jarvice_mode"},
             timeout=5,
         )
+    except requests.RequestException:
+        pass
+
+
+def stop_backend_speaking(backend_url: str) -> None:
+    try:
+        requests.post(f"{backend_url.rstrip('/')}/api/stop-speaking", json={}, timeout=5)
     except requests.RequestException:
         pass
 
@@ -138,17 +165,19 @@ def wait_for_phrase_start(q: "queue.Queue[np.ndarray]", cfg: Config) -> np.ndarr
     return np.empty((0,), dtype=np.int16)
 
 
-def handle_prompt(prompt: str, cfg: Config) -> None:
+def handle_prompt(prompt: str, cfg: Config, language: str | None = None) -> float:
     cleaned = prompt.strip()
     if not cleaned:
-        return
+        return 0.0
     print(f"[ToBrain] {cleaned}")
     try:
-        data = ask_backend(cleaned, cfg.backend_url)
+        data = ask_backend(cleaned, cfg.backend_url, language=language)
         print(f"[Jarvis] {data.get('text', '')}")
         print(f"[Meta] model={data.get('model', '-')} action={data.get('action', 'none')} lang={data.get('language', '-')}")
+        return float(data.get("speech_duration") or 0.0)
     except Exception as exc:
         print(f"[Jarvis] Backend error: {exc}")
+        return 0.0
 
 
 def main() -> int:
@@ -168,10 +197,12 @@ def main() -> int:
         q.put(indata[:, 0].copy())
 
     wake_samples_target = int(cfg.sample_rate * cfg.wake_chunk_sec)
+    wake_overlap_samples = int(cfg.sample_rate * cfg.wake_overlap_sec)
     wake_buffer = np.empty((0,), dtype=np.int16)
     current_mode = fetch_mode(cfg.backend_url)
     last_ping_at = 0.0
     last_poll_at = 0.0
+    speaking_until = 0.0
 
     print(f"[JarvisListener] Ready. Mode={current_mode}. Wake word: Jarvis / OK Jarvis / Neo")
 
@@ -196,42 +227,56 @@ def main() -> int:
                 last_poll_at = now
 
             frame = q.get()
+            frame_rms = rms_int16(frame)
+
+            if time.time() < speaking_until and frame_rms >= cfg.interrupt_rms_threshold:
+                print("[Interrupt] User voice detected, stopping Jarvis.")
+                stop_backend_speaking(cfg.backend_url)
+                speaking_until = 0.0
+                phrase_pcm = capture_until_silence(q, cfg, include_first=[frame])
+                prompt, prompt_language = transcribe_int16_pcm(command_model, phrase_pcm)
+                if prompt:
+                    print(f"[InterruptPrompt] {prompt}")
+                    speaking_until = time.time() + handle_prompt(prompt, cfg, prompt_language) + 0.2
+                continue
 
             if current_mode == "continuous":
-                if rms_int16(frame) <= cfg.silence_rms_threshold:
+                if frame_rms <= cfg.silence_rms_threshold:
                     continue
                 phrase_pcm = capture_until_silence(q, cfg, include_first=[frame])
-                prompt = transcribe_int16_pcm(command_model, phrase_pcm)
+                prompt, prompt_language = transcribe_int16_pcm(command_model, phrase_pcm)
                 if prompt:
                     print(f"[Continuous] {prompt}")
-                    handle_prompt(prompt, cfg)
+                    speaking_until = time.time() + handle_prompt(prompt, cfg, prompt_language) + 0.2
                 continue
 
             wake_buffer = np.concatenate([wake_buffer, frame])
             if wake_buffer.size < wake_samples_target:
                 continue
 
-            wake_chunk = wake_buffer[:wake_samples_target]
-            wake_buffer = wake_buffer[wake_samples_target:]
-            wake_text = transcribe_int16_pcm(wake_model, wake_chunk)
+            wake_chunk = wake_buffer[-wake_samples_target:]
+            if wake_buffer.size > wake_overlap_samples:
+                wake_buffer = wake_buffer[-wake_overlap_samples:]
+
+            wake_text, wake_language = transcribe_int16_pcm(wake_model, wake_chunk)
             if not wake_text or not has_wake_word(wake_text):
                 continue
 
             print(f"[Wake] {wake_text}")
             inline_prompt = strip_wake_words(wake_text)
             if inline_prompt:
-                handle_prompt(inline_prompt, cfg)
+                speaking_until = time.time() + handle_prompt(inline_prompt, cfg, wake_language) + 0.2
                 continue
 
             print("[JarvisListener] Wake word detected. Listening...")
             phrase_pcm = wait_for_phrase_start(q, cfg)
-            prompt = transcribe_int16_pcm(command_model, phrase_pcm)
+            prompt, prompt_language = transcribe_int16_pcm(command_model, phrase_pcm)
 
             if not prompt:
                 print("[JarvisListener] Empty command, returning to wake mode.")
                 continue
 
-            handle_prompt(prompt, cfg)
+            speaking_until = time.time() + handle_prompt(prompt, cfg, prompt_language) + 0.2
 
 
 if __name__ == "__main__":

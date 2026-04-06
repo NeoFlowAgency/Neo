@@ -51,6 +51,15 @@ bool blinkClosed = false;
 unsigned long nextBlinkAt = 0;
 unsigned long blinkUntil = 0;
 unsigned long lastFaceRedraw = 0;
+volatile bool audioPlaying = false;
+volatile bool stopAudioRequested = false;
+TaskHandle_t audioTaskHandle = nullptr;
+
+struct SpeakJob {
+  String action;
+  String face;
+  String audioUrl;
+};
 
 void logLine(const String& line) {
   Serial.println("[JARVIS] " + line);
@@ -311,6 +320,11 @@ bool playWavFromUrl(const String& url) {
   unsigned long lastRefresh = millis();
 
   while (http.connected()) {
+    if (stopAudioRequested) {
+      logLine("Audio interrupted");
+      break;
+    }
+
     int available = stream->available();
     if (available <= 0) {
       delay(2);
@@ -335,6 +349,64 @@ bool playWavFromUrl(const String& url) {
   return true;
 }
 
+void stopAudioPlayback() {
+  stopAudioRequested = true;
+  i2s_zero_dma_buffer(I2S_NUM_0);
+}
+
+void speakTask(void* parameter) {
+  SpeakJob* job = static_cast<SpeakJob*>(parameter);
+  audioPlaying = true;
+  stopAudioRequested = false;
+
+  if (isKnownFace(job->face)) {
+    setFace(job->face);
+  } else {
+    setFace("speaking");
+  }
+
+  bool actionOk = runAction(job->action.length() ? job->action : "none");
+  bool audioOk = playWavFromUrl(job->audioUrl);
+  logLine("Speak finished actionOk=" + String(actionOk ? "true" : "false") + " audioOk=" + String(audioOk ? "true" : "false"));
+
+  stopAudioRequested = false;
+  audioPlaying = false;
+  setFace("neutral");
+  delete job;
+  audioTaskHandle = nullptr;
+  vTaskDelete(NULL);
+}
+
+bool queueSpeak(const String& action, const String& face, const String& audioUrl) {
+  if (audioTaskHandle != nullptr) {
+    stopAudioPlayback();
+    unsigned long deadline = millis() + 1200;
+    while (audioPlaying && millis() < deadline) {
+      delay(10);
+    }
+  }
+
+  SpeakJob* job = new SpeakJob{action, face, audioUrl};
+  BaseType_t result = xTaskCreatePinnedToCore(
+    speakTask,
+    "speakTask",
+    8192,
+    job,
+    1,
+    &audioTaskHandle,
+    1
+  );
+
+  if (result != pdPASS) {
+    delete job;
+    audioTaskHandle = nullptr;
+    audioPlaying = false;
+    stopAudioRequested = false;
+    return false;
+  }
+  return true;
+}
+
 void handleHealth() {
   DynamicJsonDocument doc(256);
   doc["ok"] = true;
@@ -342,6 +414,7 @@ void handleHealth() {
   doc["rssi"] = WiFi.RSSI();
   doc["servo_angle"] = currentAngle;
   doc["audio_ready"] = true;
+  doc["audio_playing"] = audioPlaying;
   doc["oled_ready"] = oledReady;
   doc["face"] = currentFace;
 
@@ -410,22 +483,24 @@ void handleSpeak() {
   String audioUrl = String((const char*)doc["audio_url"]);
   String face = String((const char*)doc["face"]);
 
-  if (isKnownFace(face)) {
-    setFace(face);
-  } else {
-    setFace("speaking");
-  }
-
-  bool actionOk = runAction(action.length() ? action : "none");
-  bool audioOk = playWavFromUrl(audioUrl);
-
   DynamicJsonDocument out(256);
-  out["ok"] = (actionOk || audioOk);
-  out["action_ok"] = actionOk;
-  out["audio_ok"] = audioOk;
+  bool queued = queueSpeak(action, face, audioUrl);
+  out["ok"] = queued;
+  out["queued"] = queued;
+  out["audio_playing"] = audioPlaying;
   out["servo_angle"] = currentAngle;
   out["face"] = currentFace;
 
+  String response;
+  serializeJson(out, response);
+  server.send(200, "application/json", response);
+}
+
+void handleStop() {
+  stopAudioPlayback();
+  DynamicJsonDocument out(160);
+  out["ok"] = true;
+  out["audio_playing"] = audioPlaying;
   String response;
   serializeJson(out, response);
   server.send(200, "application/json", response);
@@ -459,6 +534,7 @@ void setupHttpServer() {
   server.on("/action", HTTP_POST, handleAction);
   server.on("/face", HTTP_POST, handleFace);
   server.on("/speak", HTTP_POST, handleSpeak);
+  server.on("/stop", HTTP_POST, handleStop);
   server.onNotFound([]() {
     server.send(404, "application/json", "{\"error\":\"Not Found\"}");
   });
