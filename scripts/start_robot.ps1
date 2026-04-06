@@ -60,7 +60,8 @@ Set-Location '$ProjectRoot'
 `$env:TEMP = '$tmpDir'
 `$env:TMP = '$tmpDir'
 `$env:PORT = '$BackendPort'
-python .\robot_server.py
+`$env:PYTHONUNBUFFERED = '1'
+python -u .\robot_server.py
 "@
 
   Start-Process -FilePath "powershell" -ArgumentList @(
@@ -87,7 +88,8 @@ Set-Location '$ProjectRoot'
 `$env:JARVICE_BACKEND = 'http://127.0.0.1:$BackendPort'
 `$env:TEMP = '$tmpDir'
 `$env:TMP = '$tmpDir'
-python .\\jarvice_mode.py
+`$env:PYTHONUNBUFFERED = '1'
+python -u .\\jarvice_mode.py
 "@
 
     Start-Process -FilePath "powershell" -ArgumentList @(

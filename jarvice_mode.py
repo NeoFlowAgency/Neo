@@ -9,11 +9,13 @@ Jarvis listener (local PC)
 
 from __future__ import annotations
 
+import difflib
 import os
 import queue
 import re
 import sys
 import time
+import unicodedata
 from dataclasses import dataclass
 
 import numpy as np
@@ -72,11 +74,27 @@ STOP_ONLY_PATTERNS = [
     r"^\s*shut up\s*$",
 ]
 
+WAKE_ALIASES = [
+    "jarvis",
+    "jarvice",
+    "jarvise",
+    "jarvisse",
+    "jarviss",
+    "jervis",
+    "gervis",
+    "gervais",
+    "neo",
+]
+
 
 def rms_int16(samples: np.ndarray) -> float:
     if samples.size == 0:
         return 0.0
     return float(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
+
+
+def log(message: str) -> None:
+    print(message, flush=True)
 
 
 def normalize_language(value: str | None) -> str | None:
@@ -111,6 +129,28 @@ def has_wake_word(text: str) -> bool:
     return any(re.search(pattern, lowered) for pattern in WAKE_PATTERNS)
 
 
+def normalize_text(text: str) -> str:
+    lowered = unicodedata.normalize("NFKD", text.lower())
+    lowered = "".join(ch for ch in lowered if not unicodedata.combining(ch))
+    lowered = re.sub(r"[^a-z0-9\s]", " ", lowered)
+    return re.sub(r"\s+", " ", lowered).strip()
+
+
+def has_fuzzy_wake_word(text: str) -> bool:
+    normalized = normalize_text(text)
+    if not normalized:
+        return False
+    if has_wake_word(normalized):
+        return True
+    tokens = normalized.split()
+    chunks = tokens + [" ".join(tokens[i : i + 2]) for i in range(max(0, len(tokens) - 1))]
+    for chunk in chunks:
+        for alias in WAKE_ALIASES:
+            if difflib.SequenceMatcher(None, chunk, alias).ratio() >= 0.74:
+                return True
+    return False
+
+
 def strip_wake_words(text: str) -> str:
     cleaned = text
     for pattern in WAKE_PATTERNS:
@@ -122,6 +162,21 @@ def strip_wake_words(text: str) -> str:
 def is_wake_up_intent(text: str) -> bool:
     lowered = text.lower()
     return any(re.search(pattern, lowered) for pattern in WAKE_UP_PATTERNS)
+
+
+def strip_wake_prefix(text: str) -> str:
+    cleaned = strip_wake_words(text)
+    if cleaned != text.strip():
+        return cleaned
+    normalized_tokens = normalize_text(text).split()
+    original_tokens = text.strip().split()
+    if not normalized_tokens or not original_tokens:
+        return ""
+    first = normalized_tokens[0]
+    for alias in WAKE_ALIASES:
+        if difflib.SequenceMatcher(None, first, alias).ratio() >= 0.74:
+            return " ".join(original_tokens[1:]).strip(" ,.!?;:")
+    return text.strip()
 
 
 def ask_backend(prompt: str, backend_url: str, language: str | None = None) -> dict:
@@ -215,36 +270,32 @@ def handle_prompt(prompt: str, cfg: Config, language: str | None = None) -> floa
     cleaned = prompt.strip()
     if not cleaned:
         return 0.0
-    print(f"[ToBrain] {cleaned}")
+    log(f"[ToBrain] {cleaned}")
     try:
         data = ask_backend(cleaned, cfg.backend_url, language=language)
-        print(f"[Jarvis] {data.get('text', '')}")
-        print(f"[Meta] model={data.get('model', '-')} action={data.get('action', 'none')} lang={data.get('language', '-')}")
+        log(f"[Jarvis] {data.get('text', '')}")
+        log(f"[Meta] model={data.get('model', '-')} action={data.get('action', 'none')} lang={data.get('language', '-')}")
         return float(data.get("speech_duration") or 0.0)
     except Exception as exc:
-        print(f"[Jarvis] Backend error: {exc}")
+        log(f"[Jarvis] Backend error: {exc}")
         return 0.0
 
 
 def main() -> int:
     cfg = Config()
-    print(f"[JarvisListener] Backend: {cfg.backend_url}")
-    print(f"[JarvisListener] Whisper wake={cfg.wake_model}, command={cfg.command_model}")
-    print("[JarvisListener] Loading Whisper models...")
+    log(f"[JarvisListener] Backend: {cfg.backend_url}")
+    log(f"[JarvisListener] Whisper wake={cfg.wake_model}, command={cfg.command_model}")
+    log("[JarvisListener] Loading Whisper models...")
 
-    wake_model = WhisperModel(cfg.wake_model, device="cpu", compute_type="int8")
     command_model = WhisperModel(cfg.command_model, device="cpu", compute_type="int8")
 
     q: queue.Queue[np.ndarray] = queue.Queue()
 
     def callback(indata, frames, time_info, status):
         if status:
-            print(f"[Audio] {status}")
+            log(f"[Audio] {status}")
         q.put(indata[:, 0].copy())
 
-    wake_samples_target = int(cfg.sample_rate * cfg.wake_chunk_sec)
-    wake_overlap_samples = int(cfg.sample_rate * cfg.wake_overlap_sec)
-    wake_buffer = np.empty((0,), dtype=np.int16)
     set_backend_mode(cfg.backend_url, "wake")
     current_mode = "wake"
     last_ping_at = 0.0
@@ -252,7 +303,7 @@ def main() -> int:
     speaking_until = 0.0
     last_interrupt_at = 0.0
 
-    print(f"[JarvisListener] Ready. Mode={current_mode}. Wake word: Jarvis / OK Jarvis / Neo")
+    log(f"[JarvisListener] Ready. Mode={current_mode}. Wake word: Jarvis / OK Jarvis / Neo")
 
     with sd.InputStream(
         samplerate=cfg.sample_rate,
@@ -271,7 +322,7 @@ def main() -> int:
                 polled_mode = fetch_mode(cfg.backend_url)
                 if polled_mode != current_mode:
                     current_mode = polled_mode
-                    print(f"[JarvisListener] Mode switched to: {current_mode}")
+                    log(f"[JarvisListener] Mode switched to: {current_mode}")
                 last_poll_at = now
 
             frame = q.get()
@@ -281,39 +332,28 @@ def main() -> int:
                 if now - last_interrupt_at < cfg.interrupt_cooldown_sec:
                     continue
                 last_interrupt_at = now
-                print("[Interrupt] User voice detected, stopping Jarvis.")
+                log("[Interrupt] User voice detected, stopping Jarvis.")
                 stop_backend_speaking(cfg.backend_url)
                 speaking_until = 0.0
                 drain_queue(q)
                 phrase_pcm = capture_until_silence(q, cfg, include_first=[frame])
                 prompt, prompt_language = transcribe_int16_pcm(command_model, phrase_pcm)
                 if prompt:
-                    print(f"[InterruptPrompt] {prompt}")
+                    log(f"[InterruptPrompt] {prompt}")
                     if not is_stop_only(prompt):
                         speaking_until = time.time() + handle_prompt(prompt, cfg, prompt_language) + 0.2
                 drain_queue(q)
                 continue
 
             if current_mode == "sleep":
-                wake_buffer = np.concatenate([wake_buffer, frame])
-                if wake_buffer.size < wake_samples_target:
+                if frame_rms <= cfg.silence_rms_threshold:
                     continue
-
-                wake_chunk = wake_buffer[-wake_samples_target:]
-                if wake_buffer.size > wake_overlap_samples:
-                    wake_buffer = wake_buffer[-wake_overlap_samples:]
-
-                wake_text, _wake_language = transcribe_int16_pcm(wake_model, wake_chunk)
-                if not wake_text or not has_wake_word(wake_text):
-                    continue
-
-                print(f"[SleepWake] {wake_text}")
-                phrase_pcm = wait_for_phrase_start(q, cfg)
+                phrase_pcm = capture_until_silence(q, cfg, include_first=[frame])
                 prompt, prompt_language = transcribe_int16_pcm(command_model, phrase_pcm)
                 if not prompt:
-                    prompt = "wake up"
-                    prompt_language = "en"
-                if has_wake_word(prompt) or is_wake_up_intent(prompt):
+                    continue
+                log(f"[SleepHeard] {prompt}")
+                if has_fuzzy_wake_word(prompt) or is_wake_up_intent(prompt):
                     set_backend_mode(cfg.backend_url, "wake")
                     current_mode = "wake"
                     speaking_until = time.time() + handle_prompt("wake up", cfg, prompt_language) + 0.2
@@ -326,36 +366,33 @@ def main() -> int:
                 phrase_pcm = capture_until_silence(q, cfg, include_first=[frame])
                 prompt, prompt_language = transcribe_int16_pcm(command_model, phrase_pcm)
                 if prompt:
-                    print(f"[Continuous] {prompt}")
+                    log(f"[Continuous] {prompt}")
                     speaking_until = time.time() + handle_prompt(prompt, cfg, prompt_language) + 0.2
                     drain_queue(q)
                 continue
 
-            wake_buffer = np.concatenate([wake_buffer, frame])
-            if wake_buffer.size < wake_samples_target:
+            if frame_rms <= cfg.silence_rms_threshold:
+                continue
+            phrase_pcm = capture_until_silence(q, cfg, include_first=[frame])
+            wake_text, wake_language = transcribe_int16_pcm(command_model, phrase_pcm)
+            if not wake_text:
+                continue
+            log(f"[WakeCandidate] {wake_text}")
+            if not has_fuzzy_wake_word(wake_text):
                 continue
 
-            wake_chunk = wake_buffer[-wake_samples_target:]
-            if wake_buffer.size > wake_overlap_samples:
-                wake_buffer = wake_buffer[-wake_overlap_samples:]
-
-            wake_text, wake_language = transcribe_int16_pcm(wake_model, wake_chunk)
-            if not wake_text or not has_wake_word(wake_text):
-                continue
-
-            print(f"[Wake] {wake_text}")
-            inline_prompt = strip_wake_words(wake_text)
+            inline_prompt = strip_wake_prefix(wake_text)
             if inline_prompt:
                 speaking_until = time.time() + handle_prompt(inline_prompt, cfg, wake_language) + 0.2
                 drain_queue(q)
                 continue
 
-            print("[JarvisListener] Wake word detected. Listening...")
+            log("[JarvisListener] Wake word detected. Listening...")
             phrase_pcm = wait_for_phrase_start(q, cfg)
             prompt, prompt_language = transcribe_int16_pcm(command_model, phrase_pcm)
 
             if not prompt:
-                print("[JarvisListener] Empty command, returning to wake mode.")
+                log("[JarvisListener] Empty command, returning to wake mode.")
                 continue
 
             speaking_until = time.time() + handle_prompt(prompt, cfg, prompt_language) + 0.2
@@ -366,5 +403,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except KeyboardInterrupt:
-        print("\n[JarvisListener] Stopped.")
+        log("\n[JarvisListener] Stopped.")
         sys.exit(0)
