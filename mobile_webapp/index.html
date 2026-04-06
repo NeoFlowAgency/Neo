@@ -162,6 +162,12 @@
     }
 
     async function toggleMediaRecorderFallback() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setStatus("Micro navigateur indisponible (iPhone/HTTP). Utilise Safari HTTPS ou la dictée clavier iOS.");
+        textInputEl.focus();
+        return;
+      }
+
       if (!isRecording) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaChunks = [];

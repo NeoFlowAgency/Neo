@@ -11,7 +11,6 @@ from pathlib import Path
 import pyttsx3
 import requests
 from flask import Flask, jsonify, request, send_from_directory, url_for
-from faster_whisper import WhisperModel
 
 
 # -------------------------- Configuration --------------------------
@@ -139,10 +138,17 @@ def send_action_to_esp32(action: str) -> dict:
         return {"ok": False, "status_code": None, "error": str(exc)}
 
 
-def get_whisper_model() -> WhisperModel:
+def get_whisper_model():
     global _whisper_model
     with _stt_lock:
         if _whisper_model is None:
+            try:
+                from faster_whisper import WhisperModel  # lazy import (optional dependency at runtime)
+            except Exception as exc:
+                raise RuntimeError(
+                    "faster-whisper indisponible sur ce système (import bloqué). "
+                    "Désactive STT fallback web ou ajuste la politique de sécurité Windows."
+                ) from exc
             logger.info(
                 "Loading faster-whisper model=%s device=%s compute_type=%s",
                 WHISPER_MODEL_NAME,

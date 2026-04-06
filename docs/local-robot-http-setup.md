@@ -154,6 +154,8 @@ Installe la dépendance STT:
 pip install faster-whisper
 ```
 
+Si Windows bloque le chargement de `av` / `faster-whisper` (erreur politique de sécurité), le backend peut encore fonctionner pour `/ask` texte, mais la transcription `/transcribe` sera indisponible tant que la stratégie App Control n'est pas ajustée.
+
 ## 8) Flasher et tester ESP32 (Arduino IDE)
 
 Fichier firmware: `wokwi/neo_http_robot.ino`
