@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NEO Local Voice</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #0f172a; color: #f8fafc; }
+    .wrap { max-width: 680px; margin: 0 auto; padding: 20px; }
+    .card { background: #111827; border: 1px solid #334155; border-radius: 12px; padding: 16px; margin-top: 12px; }
+    input, button { font-size: 16px; }
+    input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #475569; background: #0b1220; color: #fff; }
+    button { width: 100%; margin-top: 10px; padding: 12px; border: none; border-radius: 8px; background: #22c55e; color: #052e16; font-weight: 700; }
+    button:disabled { opacity: .7; }
+    .small { opacity: .85; font-size: 14px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🤖 NEO (Local)</h1>
+    <p class="small">Dicte un prompt, le serveur local appelle Gemma (Ollama), puis envoie une action à l'ESP32.</p>
+
+    <div class="card">
+      <label for="serverUrl">URL serveur Flask local</label>
+      <input id="serverUrl" value="http://192.168.1.10:5000" />
+      <button id="speakBtn">🎤 Parler</button>
+      <button id="sendBtn">Envoyer le texte</button>
+    </div>
+
+    <div class="card">
+      <h3>Texte reconnu</h3>
+      <p id="userText" class="mono">(vide)</p>
+    </div>
+
+    <div class="card">
+      <h3>Réponse NEO</h3>
+      <p id="neoText">...</p>
+      <p><strong>Action:</strong> <span id="action">none</span></p>
+      <audio id="audio" controls></audio>
+    </div>
+
+    <div class="card">
+      <h3>Logs</h3>
+      <pre id="logs" class="small"></pre>
+    </div>
+  </div>
+
+  <script>
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const userTextEl = document.getElementById('userText');
+    const neoTextEl = document.getElementById('neoText');
+    const actionEl = document.getElementById('action');
+    const logsEl = document.getElementById('logs');
+    const audioEl = document.getElementById('audio');
+    const speakBtn = document.getElementById('speakBtn');
+    const sendBtn = document.getElementById('sendBtn');
+    const serverUrlInput = document.getElementById('serverUrl');
+
+    let lastTranscript = '';
+
+    function log(line) {
+      const ts = new Date().toLocaleTimeString();
+      logsEl.textContent = `[${ts}] ${line}\n` + logsEl.textContent;
+    }
+
+    async function sendPrompt() {
+      const base = serverUrlInput.value.trim().replace(/\/$/, '');
+      if (!base) return alert('Renseigne l\'URL serveur Flask.');
+      if (!lastTranscript.trim()) return alert('Aucun texte à envoyer.');
+
+      sendBtn.disabled = true;
+      log(`POST ${base}/ask`);
+      try {
+        const res = await fetch(`${base}/ask`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: lastTranscript })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+        neoTextEl.textContent = data.text || '(vide)';
+        actionEl.textContent = data.action || 'none';
+
+        if (data.audio_url) {
+          audioEl.src = data.audio_url;
+          try {
+            await audioEl.play();
+          } catch (e) {
+            log(`Lecture auto bloquée: ${e.message}`);
+          }
+        }
+        log(`OK action=${data.action}`);
+      } catch (err) {
+        log(`Erreur: ${err.message}`);
+        alert(`Erreur: ${err.message}`);
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    speakBtn.addEventListener('click', () => {
+      if (!SpeechRecognition) {
+        alert('Web Speech API indisponible sur ce navigateur. Utilise Chrome Android/Safari récent.');
+        return;
+      }
+      const recog = new SpeechRecognition();
+      recog.lang = 'fr-FR';
+      recog.interimResults = false;
+      recog.maxAlternatives = 1;
+
+      speakBtn.disabled = true;
+      log('Écoute micro...');
+
+      recog.onresult = (event) => {
+        lastTranscript = event.results[0][0].transcript || '';
+        userTextEl.textContent = lastTranscript;
+        log(`Reconnu: ${lastTranscript}`);
+      };
+
+      recog.onerror = (e) => log(`Speech error: ${e.error}`);
+      recog.onend = () => { speakBtn.disabled = false; };
+      recog.start();
+    });
+
+    sendBtn.addEventListener('click', sendPrompt);
+  </script>
+</body>
+</html>
