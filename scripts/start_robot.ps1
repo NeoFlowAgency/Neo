@@ -29,6 +29,11 @@ if (-not (Test-Path $logsDir)) {
   New-Item -ItemType Directory -Path $logsDir | Out-Null
 }
 
+$tmpDir = Join-Path $ProjectRoot "tmp"
+if (-not (Test-Path $tmpDir)) {
+  New-Item -ItemType Directory -Path $tmpDir | Out-Null
+}
+
 $venvActivate = Join-Path $ProjectRoot ".venv\Scripts\Activate.ps1"
 if (-not (Test-Path $venvActivate)) {
   throw "Environnement Python introuvable: $venvActivate"
@@ -53,6 +58,8 @@ Set-Location '$ProjectRoot'
 `$env:OLLAMA_MODEL_LIGHT = '$OllamaLightModel'
 `$env:OLLAMA_MODEL_HEAVY = '$OllamaHeavyModel'
 `$env:ESP32_URL = '$Esp32Url'
+`$env:TEMP = '$tmpDir'
+`$env:TMP = '$tmpDir'
 `$env:PORT = '$BackendPort'
 python .\robot_server.py
 "@
@@ -79,6 +86,8 @@ if ($JarviceMode) {
 Set-Location '$ProjectRoot'
 . '$venvActivate'
 `$env:JARVICE_BACKEND = 'http://127.0.0.1:$BackendPort'
+`$env:TEMP = '$tmpDir'
+`$env:TMP = '$tmpDir'
 python .\\jarvice_mode.py
 "@
 

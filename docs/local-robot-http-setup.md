@@ -69,8 +69,7 @@ La pile locale est prete pour:
 
 - transcription locale
 - conversation locale via Ollama
+- synthese vocale locale via `Kokoro ONNX`
 - pilotage du servo
 - expressions simples sur OLED
 - dashboard local minimal
-
-Le point restant a stabiliser est la sortie voix cote PC quand la pile TTS Windows n'a pas de voix disponible.

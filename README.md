@@ -24,3 +24,11 @@ L'ancien code `Neo` et les branches d'experimentation plus larges ont ete ranges
 - `archive/legacy-neo/`
 
 Ils sont conserves a titre de reference mais ne font plus partie du chemin principal de `Jarvis V1`.
+
+## Voix
+
+La synthese vocale locale utilise maintenant `Kokoro ONNX`.
+
+- modele local gratuit
+- generation WAV cote PC
+- envoi du fichier audio au robot via l'endpoint `/speak`

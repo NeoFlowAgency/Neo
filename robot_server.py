@@ -10,9 +10,12 @@ from collections import deque
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-import pyttsx3
 import requests
+import soundfile as sf
 from flask import Flask, jsonify, request, send_from_directory, url_for
+from kokoro_onnx import Kokoro
+from kokoro_onnx.config import EspeakConfig
+import espeakng_loader
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -20,6 +23,9 @@ AUDIO_DIR = Path(os.environ.get("AUDIO_DIR", ROOT_DIR / "audio_out"))
 DATA_DIR = Path(os.environ.get("JARVIS_DATA_DIR", ROOT_DIR / "data"))
 WEB_DIR = Path(os.environ.get("JARVIS_WEB_DIR", ROOT_DIR / "mobile_webapp"))
 CHAT_FILE = DATA_DIR / "chat_history.json"
+MODELS_DIR = Path(os.environ.get("JARVIS_MODELS_DIR", ROOT_DIR / "models"))
+KOKORO_DIR = MODELS_DIR / "kokoro"
+TMP_DIR = ROOT_DIR / "tmp"
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
 OLLAMA_MODEL_LIGHT = os.environ.get("OLLAMA_MODEL_LIGHT", os.environ.get("OLLAMA_MODEL", "gemma4:e4b"))
@@ -31,6 +37,17 @@ WHISPER_MODEL_NAME = os.environ.get("WHISPER_MODEL", "small")
 WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "auto")
 WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
 SERVO_CENTER_ACTION = os.environ.get("JARVIS_CENTER_ACTION", "center")
+KOKORO_VOICE = os.environ.get("KOKORO_VOICE", "bf_emma")
+KOKORO_SPEED = float(os.environ.get("KOKORO_SPEED", "1.0"))
+KOKORO_LANG = os.environ.get("KOKORO_LANG", "fr-fr")
+KOKORO_MODEL_URL = os.environ.get(
+    "KOKORO_MODEL_URL",
+    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx",
+)
+KOKORO_VOICES_URL = os.environ.get(
+    "KOKORO_VOICES_URL",
+    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin",
+)
 
 ALLOWED_ACTIONS = {"turn_left", "turn_right", "nod", "center", "none"}
 ALLOWED_FACES = {"neutral", "listening", "thinking", "speaking", "happy", "sleepy"}
@@ -65,6 +82,8 @@ SYSTEM_PROMPT = (
 
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+KOKORO_DIR.mkdir(parents=True, exist_ok=True)
+TMP_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -74,8 +93,10 @@ logger = logging.getLogger("jarvis-local")
 
 app = Flask(__name__, static_folder=None)
 _tts_lock = threading.Lock()
+_kokoro_lock = threading.Lock()
 _stt_lock = threading.Lock()
 _whisper_model = None
+_kokoro_engine = None
 LOCAL_SESSION = requests.Session()
 LOCAL_SESSION.trust_env = False
 
@@ -133,6 +154,11 @@ def get_local_ip() -> str:
         sock.close()
 
 
+def ensure_runtime_temp_env() -> None:
+    os.environ.setdefault("TEMP", str(TMP_DIR))
+    os.environ.setdefault("TMP", str(TMP_DIR))
+
+
 def replace_host(url: str, new_host: str, new_port: int) -> str:
     parts = urlsplit(url)
     scheme = parts.scheme or "http"
@@ -163,6 +189,49 @@ def choose_model(prompt: str) -> str:
     long_prompt = len(prompt.split()) >= 18 or len(prompt) >= 120
     hinted = any(token in prompt_lower for token in HEAVY_MODEL_HINTS)
     return OLLAMA_MODEL_HEAVY if (hinted or long_prompt) else OLLAMA_MODEL_LIGHT
+
+
+def download_file(url: str, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with LOCAL_SESSION.get(url, stream=True, timeout=120) as response:
+        response.raise_for_status()
+        with destination.open("wb") as fh:
+            for chunk in response.iter_content(chunk_size=1024 * 512):
+                if chunk:
+                    fh.write(chunk)
+
+
+def ensure_kokoro_assets() -> tuple[Path, Path]:
+    model_path = KOKORO_DIR / "kokoro-v1.0.onnx"
+    voices_path = KOKORO_DIR / "voices-v1.0.bin"
+
+    if not model_path.exists():
+        log_event("INFO", "Downloading Kokoro model file")
+        download_file(KOKORO_MODEL_URL, model_path)
+    if not voices_path.exists():
+        log_event("INFO", "Downloading Kokoro voice pack")
+        download_file(KOKORO_VOICES_URL, voices_path)
+
+    return model_path, voices_path
+
+
+def get_kokoro_engine() -> Kokoro:
+    global _kokoro_engine
+    with _kokoro_lock:
+        if _kokoro_engine is None:
+            ensure_runtime_temp_env()
+            model_path, voices_path = ensure_kokoro_assets()
+            espeak_config = EspeakConfig(
+                lib_path=espeakng_loader.get_library_path(),
+                data_path=espeakng_loader.get_data_path(),
+            )
+            _kokoro_engine = Kokoro(
+                str(model_path),
+                str(voices_path),
+                espeak_config=espeak_config,
+            )
+            log_event("INFO", f"Kokoro ready with voice={KOKORO_VOICE}")
+    return _kokoro_engine
 
 
 def build_ollama_prompt(prompt: str) -> str:
@@ -226,12 +295,14 @@ def ask_ollama(prompt: str) -> dict:
 def generate_wav(text: str, filename: str) -> Path:
     wav_path = AUDIO_DIR / filename
     with _tts_lock:
-        engine = pyttsx3.init()
-        engine.setProperty("rate", 168)
-        engine.setProperty("volume", 1.0)
-        engine.save_to_file(text, str(wav_path))
-        engine.runAndWait()
-        engine.stop()
+        kokoro = get_kokoro_engine()
+        audio, sample_rate = kokoro.create(
+            text,
+            voice=KOKORO_VOICE,
+            speed=KOKORO_SPEED,
+            lang=KOKORO_LANG,
+        )
+    sf.write(str(wav_path), audio, sample_rate)
     log_event("INFO", f"WAV generated: {wav_path.name}")
     return wav_path
 
