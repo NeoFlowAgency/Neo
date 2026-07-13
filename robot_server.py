@@ -77,9 +77,11 @@ FRENCH_HINTS = {
 ACTIVATE_CONTINUOUS_PATTERNS = (
     r"\bactive (la )?(conversation|discussion|ecoute|écoute) continue\b",
     r"\bpasse en mode (conversation|discussion|ecoute|écoute) continue\b",
+    r"\bactive (le )?mode (de )?(la )?(conversation|discussion|ecoute|écoute) continue\b",
 )
 DEACTIVATE_CONTINUOUS_PATTERNS = (
     r"\bd[ée]sactive (la )?(conversation|discussion|ecoute|écoute) continue\b",
+    r"\bd[ée]sactive (le )?mode (de )?(la )?(conversation|discussion|ecoute|écoute) continue\b",
     r"\bstop (la )?(conversation|discussion|ecoute|écoute) continue\b",
     r"\bquitte le mode (conversation|discussion|ecoute|écoute) continue\b",
     r"\breviens? en mode (wake|veille|réveil)\b",
@@ -455,6 +457,14 @@ def ask_ollama(prompt: str, preferred_language: str | None = None) -> dict:
 
 def fast_response(prompt: str, language: str) -> dict | None:
     lowered = prompt.lower()
+
+    if any(token in lowered for token in ("salut", "bonjour", "hello", "hi", "ca va", "ça va", "comment vas-tu", "how are you")):
+        text = (
+            "I am doing great. I am ready to help."
+            if language == "en"
+            else "Je vais tres bien. Je suis pret a t'aider."
+        )
+        return {"text": text, "action": "none", "face": "happy", "language": language, "model": "fast"}
 
     if ("heure" in lowered) or ("what time" in lowered) or ("current time" in lowered):
         now_text = time.strftime("%H:%M")

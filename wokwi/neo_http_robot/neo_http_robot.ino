@@ -26,7 +26,7 @@ static constexpr int SERVO_PIN = 18;
 static constexpr int ANGLE_CENTER = 90;
 static constexpr int ANGLE_LEFT = 55;
 static constexpr int ANGLE_RIGHT = 125;
-static constexpr int STEP_DELAY_MS = 6;
+static constexpr int STEP_DELAY_MS = 4;
 static constexpr int HOLD_DELAY_MS = 55;
 
 static constexpr int SCREEN_WIDTH = 128;
